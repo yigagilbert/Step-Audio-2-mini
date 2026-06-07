@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from stepaudio_luganda.paths import resolve_prompt_wav  # noqa: E402
+from stepaudio_luganda.torchcodec_compat import patch_torchaudio_bytesio_save  # noqa: E402
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -58,6 +59,7 @@ def main() -> None:
 
     stepaudio2_repo = Path(args.stepaudio2_repo).resolve()
     sys.path.insert(0, str(stepaudio2_repo))
+    patch_torchaudio_bytesio_save()
     from token2wav import Token2wav  # noqa: PLC0415
 
     model_path = Path(cfg["model"].get("local_path") or cfg["model"]["name_or_path"])

@@ -16,6 +16,7 @@ from stepaudio_luganda.audio import load_audio, log_mel_spectrogram  # noqa: E40
 from stepaudio_luganda.formatting import StepAudioFormatter  # noqa: E402
 from stepaudio_luganda.modeling import load_model, load_tokenizer  # noqa: E402
 from stepaudio_luganda.paths import resolve_prompt_wav  # noqa: E402
+from stepaudio_luganda.torchcodec_compat import patch_torchaudio_bytesio_save  # noqa: E402
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -107,6 +108,7 @@ def main() -> None:
         raise RuntimeError("Model returned no audio tokens. Try a larger max_new_tokens or audio_only target_format.")
 
     sys.path.insert(0, str(Path(args.stepaudio2_repo).resolve()))
+    patch_torchaudio_bytesio_save()
     from token2wav import Token2wav
 
     token2wav = Token2wav(str(Path(model_path) / "token2wav"))
