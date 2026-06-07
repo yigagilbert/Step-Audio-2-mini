@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+from typing import Any
+
+import torch
+import yaml
+from peft import PeftModel
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from stepaudio_luganda.audio import load_audio, log_mel_spectrogram  # noqa: E402
+from stepaudio_luganda.formatting import StepAudioFormatter  # noqa: E402
+from stepaudio_luganda.modeling import load_model, load_tokenizer  # noqa: E402
+
+
+def load_config(path: str | Path) -> dict[str, Any]:
+    with Path(path).open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def extract_audio_and_text(tokenizer, formatter, token_ids: list[int]) -> tuple[str, list[int]]:
+    text_ids = []
+    audio_tokens = []
+    for token_id in token_ids:
+        if token_id >= formatter.audio_token_offset:
+            audio_tokens.append(token_id - formatter.audio_token_offset)
+        elif token_id < formatter.audio_start_id:
+            text_ids.append(token_id)
+    text = tokenizer.decode(text_ids, skip_special_tokens=True).strip()
+    audio_tokens = [x for x in audio_tokens if 0 <= x <= 6560]
+    return text, audio_tokens
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="config.yaml")
+    parser.add_argument("--audio", required=True, help="Input Luganda wav/mp3/flac path.")
+    parser.add_argument("--adapter", default=None)
+    parser.add_argument("--stepaudio2-repo", default="Step-Audio2")
+    parser.add_argument("--output", default="outputs/inference_luganda_to_english.wav")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+    model_path = cfg["model"].get("local_path") or cfg["model"]["name_or_path"]
+    tokenizer = load_tokenizer(model_path, trust_remote_code=cfg["model"].get("trust_remote_code", True))
+    formatter = StepAudioFormatter(
+        tokenizer,
+        system_prompt=cfg["format"]["system_prompt"],
+        target_format=cfg["format"]["target_format"],
+    )
+    model = load_model(model_path, cfg["model"])
+    adapter_path = args.adapter or str(Path(cfg["project"]["output_dir"]) / "final")
+    if Path(adapter_path).exists():
+        model = PeftModel.from_pretrained(model, adapter_path)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device).eval()
+
+    audio = load_audio(args.audio, target_rate=16000)
+    mel = log_mel_spectrogram(audio, n_mels=128, padding=479)
+    prompt_ids = formatter.build_prompt(int(mel.shape[1]))
+    input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
+    wavs = mel.unsqueeze(0).to(device=device, dtype=torch.float32)
+    wav_lens = torch.tensor([max(1, int(mel.shape[1]) - 2)], dtype=torch.int32, device=device)
+
+    with torch.no_grad():
+        generated = model.generate(
+            input_ids=input_ids,
+            attention_mask=torch.ones_like(input_ids),
+            wavs=wavs,
+            wav_lens=wav_lens,
+            max_new_tokens=int(cfg["generation"]["max_new_tokens"]),
+            temperature=float(cfg["generation"]["temperature"]),
+            top_p=float(cfg["generation"]["top_p"]),
+            repetition_penalty=float(cfg["generation"]["repetition_penalty"]),
+            do_sample=bool(cfg["generation"]["do_sample"]),
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=formatter.eot_id,
+        )
+
+    new_ids = generated[0, len(prompt_ids) :].detach().cpu().tolist()
+    text, audio_tokens = extract_audio_and_text(tokenizer, formatter, new_ids)
+    print(text)
+    if not audio_tokens:
+        raise RuntimeError("Model returned no audio tokens. Try a larger max_new_tokens or audio_only target_format.")
+
+    sys.path.insert(0, str(Path(args.stepaudio2_repo).resolve()))
+    from token2wav import Token2wav
+
+    token2wav = Token2wav(str(Path(model_path) / "token2wav"))
+    wav_bytes = token2wav(audio_tokens, prompt_wav=cfg["generation"]["prompt_wav"])
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(wav_bytes)
+    print(f"Wrote {output}")
+
+
+if __name__ == "__main__":
+    main()

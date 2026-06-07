@@ -1,0 +1,27 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+.env
+
+# Large/generated artifacts
+data/raw/
+data/processed/
+outputs/
+checkpoints/
+wandb/
+runs/
+*.wav
+*.pcm
+*.pt
+*.safetensors
+
+# Local model/vendor checkouts
+Step-Audio-2-mini/
+Step-Audio2/
+vendor/

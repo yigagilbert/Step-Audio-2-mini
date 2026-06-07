@@ -1,0 +1,27 @@
+accelerate>=0.34.0
+datasets[audio]>=2.21.0
+deepspeed>=0.14.5
+evaluate>=0.4.3
+huggingface_hub>=0.24.6
+jiwer>=3.0.4
+librosa>=0.10.2.post1
+numpy>=1.26.4
+onnxruntime>=1.18.1
+peft>=0.12.0
+PyYAML>=6.0.2
+sacrebleu>=2.4.3
+soundfile>=0.12.1
+tensorboard>=2.17.1
+torch>=2.3.0
+torchaudio>=2.3.0
+transformers==4.49.0
+tqdm>=4.66.5
+
+# Required by Step-Audio 2 token2wav. Install CUDA-compatible wheels on the H100 host.
+s3tokenizer
+diffusers
+hyperpyyaml
+
+# Optional evaluation extras:
+# unbabel-comet
+# faster-whisper

@@ -1,0 +1,105 @@
+project:
+  name: stepaudio2-luganda-s2st
+  output_dir: outputs/stepaudio2-luganda-lora
+  processed_dir: data/processed/luganda_english_cleaned_v1
+  seed: 42
+
+model:
+  name_or_path: stepfun-ai/Step-Audio-2-mini
+  local_path: Step-Audio-2-mini
+  trust_remote_code: true
+  dtype: bfloat16
+  gradient_checkpointing: true
+
+dataset:
+  name: yigagilbert/luganda-english-cleaned-v1-split
+  token_env: HF_TOKEN
+  required_columns:
+    - audio_lug
+    - audio_eng
+    - text_lug
+    - text_eng
+    - id
+    - src_dur_s
+    - tgt_dur_s
+    - dur_ratio
+    - src_speech_ratio
+    - tgt_speech_ratio
+  splits:
+    train: train
+    validation: validation
+    test: test
+  filters:
+    min_dur_ratio: 0.5
+    max_dur_ratio: 2.0
+    min_src_speech_ratio: 0.7
+    min_tgt_speech_ratio: 0.7
+    max_src_dur_s: 25.0
+    max_tgt_dur_s: 30.0
+  vad:
+    enabled: true
+    method: energy_trim
+    top_db: 35
+  audio:
+    sample_rate: 16000
+    save_resampled_wavs: true
+  preprocessing:
+    max_samples_per_split:
+      train:
+      validation:
+      test:
+    num_proc: 1
+    target_token_batch_size: 1
+
+format:
+  system_prompt: "You are a professional Luganda-to-English speech translation system. Listen to the Luganda speech and answer with natural English speech."
+  target_format: text_then_audio
+  # Supported: text_then_audio, audio_only, text_only.
+  max_target_audio_tokens: 1600
+  max_sequence_length: 16384
+
+lora:
+  enabled: true
+  r: 64
+  alpha: 128
+  dropout: 0.05
+  bias: none
+  target_modules:
+    - q_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  train_adapter: false
+  train_audio_encoder: false
+
+training:
+  deepspeed: deepspeed_zero3.json
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 16
+  num_train_epochs: 2
+  learning_rate: 0.0001
+  warmup_ratio: 0.03
+  weight_decay: 0.01
+  lr_scheduler_type: cosine
+  logging_steps: 10
+  eval_steps: 250
+  save_steps: 250
+  save_total_limit: 3
+  max_grad_norm: 1.0
+  bf16: true
+  tf32: true
+  dataloader_num_workers: 4
+  report_to: tensorboard
+  push_to_hub: false
+  hub_model_id:
+
+generation:
+  max_new_tokens: 2048
+  temperature: 0.7
+  top_p: 0.9
+  repetition_penalty: 1.05
+  do_sample: true
+  prompt_wav: Step-Audio-2-mini/assets/default_female.wav
