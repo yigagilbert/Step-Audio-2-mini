@@ -92,7 +92,7 @@ training:
   bf16: true
   tf32: true
   dataloader_num_workers: 4
-  report_to: tensorboard
+  report_to: wandb
   push_to_hub: false
   hub_model_id:
 

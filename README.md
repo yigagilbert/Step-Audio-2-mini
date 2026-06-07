@@ -83,7 +83,7 @@ HF dataset
 ```bash
 # Ubuntu/Debian host packages.
 sudo apt-get update
-sudo apt-get install -y git git-lfs ffmpeg libsndfile1 build-essential
+sudo apt-get install -y git git-lfs ffmpeg libsndfile1 build-essential nvtop
 
 # Install uv if it is not already available.
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -120,6 +120,39 @@ Quick environment check:
 ```bash
 uv run python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
+
+## Logging and GPU monitoring
+
+Weights & Biases is the default training logger. Log in once on the remote GPU host:
+
+```bash
+uv run wandb login
+export WANDB_PROJECT=stepaudio2-luganda-s2st
+export WANDB_LOG_MODEL=checkpoint
+```
+
+The active backend is controlled in `config.yaml`:
+
+```yaml
+training:
+  report_to: wandb
+```
+
+For offline runs, use:
+
+```bash
+export WANDB_MODE=offline
+```
+
+Use `nvtop` in a second SSH/tmux pane while preprocessing or training:
+
+```bash
+nvtop
+```
+
+`nvtop` gives live GPU utilization, VRAM, temperature, power draw, and per-process GPU
+usage. Keep it open during the first full run to confirm the H100 is saturated and that
+ZeRO-3/LoRA memory stays within budget.
 
 ## Data preparation
 

@@ -128,7 +128,7 @@ def main() -> None:
         max_grad_norm=float(train_cfg["max_grad_norm"]),
         bf16=bool(train_cfg["bf16"]),
         dataloader_num_workers=int(train_cfg["dataloader_num_workers"]),
-        report_to=train_cfg.get("report_to", "tensorboard"),
+        report_to=train_cfg.get("report_to", "wandb"),
         deepspeed=train_cfg.get("deepspeed"),
         evaluation_strategy="steps" if eval_dataset is not None else "no",
         save_strategy="steps",
