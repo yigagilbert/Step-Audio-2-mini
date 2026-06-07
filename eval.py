@@ -26,13 +26,31 @@ def load_config(path: str | Path) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def clean_prediction_text(text: str) -> str:
+    text = text.strip()
+    if not text:
+        return text
+    return text.splitlines()[0].strip()
+
+
 def extract_outputs(token_ids: list[int], formatter: StepAudioFormatter) -> tuple[list[int], list[int]]:
     text_ids: list[int] = []
     audio_tokens: list[int] = []
+    seen_audio = False
     for token_id in token_ids:
+        if token_id == formatter.eot_id:
+            break
+        if token_id == formatter.tts_start_id:
+            seen_audio = True
+            continue
+        if token_id == formatter.tts_end_id:
+            break
         if token_id >= formatter.audio_token_offset:
-            audio_tokens.append(token_id - formatter.audio_token_offset)
-        elif token_id < formatter.audio_start_id:
+            audio_token = token_id - formatter.audio_token_offset
+            if 0 <= audio_token <= formatter.tts_valid_max:
+                audio_tokens.append(audio_token)
+            seen_audio = True
+        elif not seen_audio and token_id < formatter.audio_start_id:
             text_ids.append(token_id)
     return text_ids, audio_tokens
 
@@ -61,7 +79,7 @@ def generate_one(model, tokenizer, formatter, row, cfg, device: torch.device) ->
     )
     new_ids = output[0, len(prompt_ids) :].detach().cpu().tolist()
     text_ids, audio_tokens = extract_outputs(new_ids, formatter)
-    pred_text = tokenizer.decode(text_ids, skip_special_tokens=True).strip()
+    pred_text = clean_prediction_text(tokenizer.decode(text_ids, skip_special_tokens=True))
     return {
         "id": row["id"],
         "reference": row["text_eng"],

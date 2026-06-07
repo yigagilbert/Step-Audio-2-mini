@@ -169,6 +169,32 @@ def optional_int(value: Any, default: int) -> int:
     return int(value)
 
 
+def configure_reporting_environment(train_cfg: dict[str, Any]) -> None:
+    report_to = train_cfg.get("report_to", "wandb")
+    if not report_to:
+        return
+    if isinstance(report_to, str):
+        report_targets = {item.strip().lower() for item in report_to.split(",")}
+    else:
+        report_targets = {str(item).strip().lower() for item in report_to}
+
+    if "wandb" not in report_targets:
+        return
+
+    if "wandb_log_model" in train_cfg:
+        os.environ["WANDB_LOG_MODEL"] = str(train_cfg["wandb_log_model"]).lower()
+    else:
+        os.environ.setdefault("WANDB_LOG_MODEL", "false")
+    os.environ.setdefault("WANDB_WATCH", "false")
+    if os.environ.get("RANK", "0") == "0":
+        print(
+            "[wandb-config] "
+            f"WANDB_LOG_MODEL={os.environ.get('WANDB_LOG_MODEL')} "
+            f"WANDB_WATCH={os.environ.get('WANDB_WATCH')}",
+            flush=True,
+        )
+
+
 def resolve_deepspeed_config(train_cfg: dict[str, Any], output_dir: Path) -> str | None:
     source = train_cfg.get("deepspeed")
     if not source:
@@ -207,6 +233,7 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(args.config)
+    configure_reporting_environment(cfg["training"])
     seed_everything(int(cfg["project"].get("seed", 42)))
     if cfg["training"].get("tf32", True):
         torch.backends.cuda.matmul.allow_tf32 = True

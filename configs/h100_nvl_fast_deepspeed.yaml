@@ -93,6 +93,7 @@ training:
   tf32: true
   dataloader_num_workers: 4
   report_to: wandb
+  wandb_log_model: false
   debug_optimizer_state: false
   push_to_hub: false
   hub_model_id:

@@ -131,17 +131,21 @@ Weights & Biases is the default training logger. Log in once on the remote GPU h
 uv run wandb login
 export WANDB_PROJECT=stepaudio2-luganda-s2st
 export WANDB_LOG_MODEL=false
+export WANDB_WATCH=false
 ```
 
 Keep `WANDB_LOG_MODEL=false` for throughput-sensitive runs; checkpoint artifact upload
 can add pauses. Change it to `checkpoint` only when you specifically want W&B to upload
-each saved adapter checkpoint.
+each saved adapter checkpoint. With DeepSpeed, keep it disabled unless you have tested
+artifact logging separately; some Transformers/Accelerate/W&B combinations create a
+second Accelerator at train shutdown when model artifact logging is enabled.
 
 The active backend is controlled in `config.yaml`:
 
 ```yaml
 training:
   report_to: wandb
+  wandb_log_model: false
 ```
 
 For offline runs, use:
@@ -268,6 +272,7 @@ source .venv/bin/activate
 
 export WANDB_PROJECT=stepaudio2-luganda-s2st
 export WANDB_LOG_MODEL=false
+export WANDB_WATCH=false
 export TOKENIZERS_PARALLELISM=false
 
 mkdir -p logs
@@ -339,6 +344,16 @@ uv run python eval.py --config config.yaml --split validation --comet-model Unba
 
 The evaluator reports BLEU and WER over the generated English text channel. For final
 S2ST acceptance, also run native-speaker review and ASR-based WER on generated wavs.
+
+To listen to generated speech from an eval JSONL, synthesize a small sample set:
+
+```bash
+uv run python scripts/synthesize_eval_audio.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --predictions outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl \
+  --stepaudio2-repo Step-Audio2 \
+  --limit 10
+```
 
 ## Inference
 

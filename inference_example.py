@@ -22,16 +22,33 @@ def load_config(path: str | Path) -> dict[str, Any]:
         return yaml.safe_load(f)
 
 
+def clean_prediction_text(text: str) -> str:
+    text = text.strip()
+    if not text:
+        return text
+    return text.splitlines()[0].strip()
+
+
 def extract_audio_and_text(tokenizer, formatter, token_ids: list[int]) -> tuple[str, list[int]]:
     text_ids = []
     audio_tokens = []
+    seen_audio = False
     for token_id in token_ids:
+        if token_id == formatter.eot_id:
+            break
+        if token_id == formatter.tts_start_id:
+            seen_audio = True
+            continue
+        if token_id == formatter.tts_end_id:
+            break
         if token_id >= formatter.audio_token_offset:
-            audio_tokens.append(token_id - formatter.audio_token_offset)
-        elif token_id < formatter.audio_start_id:
+            audio_token = token_id - formatter.audio_token_offset
+            if 0 <= audio_token <= formatter.tts_valid_max:
+                audio_tokens.append(audio_token)
+            seen_audio = True
+        elif not seen_audio and token_id < formatter.audio_start_id:
             text_ids.append(token_id)
-    text = tokenizer.decode(text_ids, skip_special_tokens=True).strip()
-    audio_tokens = [x for x in audio_tokens if 0 <= x <= 6560]
+    text = clean_prediction_text(tokenizer.decode(text_ids, skip_special_tokens=True))
     return text, audio_tokens
 
 
