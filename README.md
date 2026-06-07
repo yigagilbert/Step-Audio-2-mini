@@ -83,7 +83,7 @@ HF dataset
 ```bash
 # Ubuntu/Debian host packages.
 sudo apt-get update
-sudo apt-get install -y git git-lfs ffmpeg libsndfile1 build-essential nvtop
+sudo apt-get install -y git git-lfs ffmpeg libsndfile1 build-essential tmux nvtop
 
 # Install uv if it is not already available.
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -180,6 +180,11 @@ and restart `data_prep.py`. Newer Hugging Face `datasets` versions return TorchC
 decoder objects for `Audio` columns; this repo decodes them through
 `AudioDecoder.get_all_samples()` before resampling to mono 16 kHz.
 
+For `yigagilbert/luganda-english-cleaned-v1-split`, a normal filtered run may produce
+only `train.jsonl` and `validation.jsonl`. If `data_prep.py` prints `Dataset split 'test'
+not found`, use `validation` for evaluation unless you create a separate held-out test
+manifest later.
+
 ## Hyperparameters
 
 | Setting | Default | Rationale |
@@ -205,13 +210,73 @@ Expected first-run behavior on an H100 NVL: preprocessing is dominated by target
 tokenization; training 50 hours for one epoch is likely in the 4-8 hour range depending
 on average utterance length, disk speed, and evaluation frequency.
 
+Recommended tmux runbook for remote GPUs:
+
+```bash
+tmux new -s stepaudio2-train
+```
+
+Inside the tmux session:
+
+```bash
+cd ~/jupyterlab-env/Step-Audio-2-mini
+source .venv/bin/activate
+
+export WANDB_PROJECT=stepaudio2-luganda-s2st
+export WANDB_LOG_MODEL=checkpoint
+export TOKENIZERS_PARALLELISM=false
+
+mkdir -p logs
+uv run torchrun --nproc_per_node=1 train.py --config config.yaml 2>&1 | tee logs/train-$(date +%Y%m%d-%H%M%S).log
+```
+
+Useful tmux controls:
+
+```text
+Ctrl-b d        detach and leave training running
+tmux attach -t stepaudio2-train
+tmux ls
+tmux kill-session -t stepaudio2-train
+```
+
+Open a second tmux pane or SSH tab for GPU monitoring:
+
+```bash
+nvtop
+```
+
+Before starting the full run, sanity-check the processed manifests:
+
+```bash
+wc -l data/processed/luganda_english_cleaned_v1/train.jsonl
+wc -l data/processed/luganda_english_cleaned_v1/validation.jsonl
+```
+
+Smoke-test optimizer, scheduler, DeepSpeed, and LoRA wiring for 20 update steps:
+
+```bash
+WANDB_MODE=offline uv run torchrun --nproc_per_node=1 train.py --config config.yaml --max-steps 20
+```
+
+Healthy optimizer diagnostics should show one DeepSpeed optimizer group and one
+scheduler LR value:
+
+```text
+[deepspeed-config] ... gradient_accumulation_steps=16 ... train_batch_size=16
+[optim-debug] using_single_deepspeed_optimizer_group=true ...
+[optim-debug] stage=after_create_optimizer
+[optim-debug] optimizer_type=AdamW param_groups=1
+[optim-debug] stage=after_create_scheduler
+[optim-debug] scheduler_type=LambdaLR base_lrs=1 last_lrs=1
+```
+
 ## Evaluate
 
 ```bash
-uv run python eval.py --config config.yaml --split test --adapter outputs/stepaudio2-luganda-lora/final
+uv run python eval.py --config config.yaml --split validation --adapter outputs/stepaudio2-luganda-lora/final
 
 # Optional COMET if installed:
-uv run python eval.py --config config.yaml --split test --comet-model Unbabel/wmt22-comet-da
+uv run python eval.py --config config.yaml --split validation --comet-model Unbabel/wmt22-comet-da
 ```
 
 The evaluator reports BLEU and WER over the generated English text channel. For final

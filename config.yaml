@@ -80,6 +80,7 @@ training:
   per_device_eval_batch_size: 1
   gradient_accumulation_steps: 16
   num_train_epochs: 2
+  max_steps:
   learning_rate: 0.0001
   warmup_ratio: 0.03
   weight_decay: 0.01
@@ -93,6 +94,7 @@ training:
   tf32: true
   dataloader_num_workers: 4
   report_to: wandb
+  debug_optimizer_state: true
   push_to_hub: false
   hub_model_id:
 

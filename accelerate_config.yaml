@@ -12,5 +12,6 @@ same_network: true
 use_cpu: false
 deepspeed_config:
   deepspeed_config_file: deepspeed_zero3.json
+  gradient_accumulation_steps: 16
   zero3_init_flag: true
   zero3_save_16bit_model: true

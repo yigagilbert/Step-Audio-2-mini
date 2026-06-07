@@ -88,7 +88,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--adapter", default=None, help="LoRA adapter path; defaults to output_dir/final.")
-    parser.add_argument("--split", default="test")
+    parser.add_argument("--split", default="validation")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--comet-model", default=None)
     args = parser.parse_args()
