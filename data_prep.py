@@ -76,6 +76,8 @@ def validate_schema(dataset, required_columns: list[str]) -> None:
 def keep_row(row: dict[str, Any], filters: dict[str, Any], target_format: str) -> bool:
     if not row.get("text_lug") or not row.get("text_eng"):
         return False
+    if row.get("audio_lug") is None:
+        return False
     checks = [
         float(row.get("dur_ratio", 0.0)) >= float(filters["min_dur_ratio"]),
         float(row.get("dur_ratio", 999.0)) <= float(filters["max_dur_ratio"]),

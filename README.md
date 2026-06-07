@@ -174,6 +174,12 @@ source duration <=25s, and target duration <=30s. The 25s source cap matches the
 inference code's audio chunking constraint around the encoder context; segment longer
 utterances before SFT if you want to keep them.
 
+If preprocessing logs `Unsupported audio cell type:
+<class 'datasets.features._torchcodec.AudioDecoder'>`, update to the latest repo code
+and restart `data_prep.py`. Newer Hugging Face `datasets` versions return TorchCodec
+decoder objects for `Audio` columns; this repo decodes them through
+`AudioDecoder.get_all_samples()` before resampling to mono 16 kHz.
+
 ## Hyperparameters
 
 | Setting | Default | Rationale |
