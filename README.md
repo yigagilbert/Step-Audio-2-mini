@@ -352,6 +352,7 @@ uv run python scripts/synthesize_eval_audio.py \
   --config configs/h100_nvl_fast_deepspeed.yaml \
   --predictions outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl \
   --stepaudio2-repo Step-Audio2 \
+  --prompt-wav Step-Audio2/assets/default_female.wav \
   --limit 10
 ```
 

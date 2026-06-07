@@ -12,6 +12,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from stepaudio_luganda.paths import resolve_prompt_wav  # noqa: E402
+
 
 def load_config(path: str | Path) -> dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as f:
@@ -42,6 +44,7 @@ def main() -> None:
         help="Eval JSONL from eval.py; defaults to output_dir/eval/validation_predictions.jsonl.",
     )
     parser.add_argument("--stepaudio2-repo", default="Step-Audio2")
+    parser.add_argument("--prompt-wav", default=None)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--min-audio-tokens", type=int, default=10)
@@ -59,7 +62,13 @@ def main() -> None:
 
     model_path = Path(cfg["model"].get("local_path") or cfg["model"]["name_or_path"])
     token2wav = Token2wav(str(model_path / "token2wav"))
-    prompt_wav = cfg["generation"]["prompt_wav"]
+    prompt_wav = resolve_prompt_wav(
+        args.prompt_wav or cfg["generation"]["prompt_wav"],
+        model_path=model_path,
+        stepaudio2_repo=stepaudio2_repo,
+        root=ROOT,
+    )
+    print(f"Using prompt wav: {prompt_wav}")
 
     written = 0
     manifest = []
@@ -69,7 +78,7 @@ def main() -> None:
             continue
         name = f"{idx:04d}_{safe_name(str(row.get('id', idx)))}.wav"
         wav_path = sample_dir / name
-        wav_path.write_bytes(token2wav(audio_tokens, prompt_wav=prompt_wav))
+        wav_path.write_bytes(token2wav(audio_tokens, prompt_wav=str(prompt_wav)))
         manifest.append(
             {
                 "id": row.get("id"),

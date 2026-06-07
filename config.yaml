@@ -105,4 +105,4 @@ generation:
   top_p: 0.9
   repetition_penalty: 1.05
   do_sample: true
-  prompt_wav: Step-Audio-2-mini/assets/default_female.wav
+  prompt_wav: Step-Audio2/assets/default_female.wav

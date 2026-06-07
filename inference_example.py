@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from stepaudio_luganda.audio import load_audio, log_mel_spectrogram  # noqa: E402
 from stepaudio_luganda.formatting import StepAudioFormatter  # noqa: E402
 from stepaudio_luganda.modeling import load_model, load_tokenizer  # noqa: E402
+from stepaudio_luganda.paths import resolve_prompt_wav  # noqa: E402
 
 
 def load_config(path: str | Path) -> dict[str, Any]:
@@ -58,6 +59,7 @@ def main() -> None:
     parser.add_argument("--audio", required=True, help="Input Luganda wav/mp3/flac path.")
     parser.add_argument("--adapter", default=None)
     parser.add_argument("--stepaudio2-repo", default="Step-Audio2")
+    parser.add_argument("--prompt-wav", default=None)
     parser.add_argument("--output", default="outputs/inference_luganda_to_english.wav")
     args = parser.parse_args()
 
@@ -108,7 +110,14 @@ def main() -> None:
     from token2wav import Token2wav
 
     token2wav = Token2wav(str(Path(model_path) / "token2wav"))
-    wav_bytes = token2wav(audio_tokens, prompt_wav=cfg["generation"]["prompt_wav"])
+    prompt_wav = resolve_prompt_wav(
+        args.prompt_wav or cfg["generation"]["prompt_wav"],
+        model_path=model_path,
+        stepaudio2_repo=args.stepaudio2_repo,
+        root=ROOT,
+    )
+    print(f"Using prompt wav: {prompt_wav}")
+    wav_bytes = token2wav(audio_tokens, prompt_wav=str(prompt_wav))
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(wav_bytes)
