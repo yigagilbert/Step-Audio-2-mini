@@ -1,5 +1,5 @@
 project:
-  name: stepaudio2-luganda-s2st
+  name: stepaudio2-luganda-s2st-h100-fast
   output_dir: outputs/stepaudio2-luganda-lora
   processed_dir: data/processed/luganda_english_cleaned_v1
   seed: 42
@@ -9,7 +9,7 @@ model:
   local_path: Step-Audio-2-mini
   trust_remote_code: true
   dtype: bfloat16
-  gradient_checkpointing: true
+  gradient_checkpointing: false
 
 dataset:
   name: yigagilbert/luganda-english-cleaned-v1-split
@@ -54,7 +54,6 @@ dataset:
 format:
   system_prompt: "You are a professional Luganda-to-English speech translation system. Listen to the Luganda speech and answer with natural English speech."
   target_format: text_then_audio
-  # Supported: text_then_audio, audio_only, text_only.
   max_target_audio_tokens: 1600
   max_sequence_length: 16384
 
@@ -76,9 +75,9 @@ lora:
 
 training:
   deepspeed: deepspeed_zero3.json
-  per_device_train_batch_size: 1
-  per_device_eval_batch_size: 2
-  gradient_accumulation_steps: 16
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 8
   num_train_epochs: 2
   max_steps:
   learning_rate: 0.0001

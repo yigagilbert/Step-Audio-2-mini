@@ -60,6 +60,8 @@ HF dataset
 +-- LICENSE
 +-- requirements.txt
 +-- config.yaml
++-- configs/
+|   +-- h100_nvl_fast_deepspeed.yaml
 +-- deepspeed_zero3.json
 +-- accelerate_config.yaml
 +-- data_prep.py
@@ -128,8 +130,12 @@ Weights & Biases is the default training logger. Log in once on the remote GPU h
 ```bash
 uv run wandb login
 export WANDB_PROJECT=stepaudio2-luganda-s2st
-export WANDB_LOG_MODEL=checkpoint
+export WANDB_LOG_MODEL=false
 ```
+
+Keep `WANDB_LOG_MODEL=false` for throughput-sensitive runs; checkpoint artifact upload
+can add pauses. Change it to `checkpoint` only when you specifically want W&B to upload
+each saved adapter checkpoint.
 
 The active backend is controlled in `config.yaml`:
 
@@ -200,6 +206,43 @@ manifest later.
 | Sequence length | 16384 | Public config maximum |
 | DeepSpeed | ZeRO-3 | Keeps optimizer/state memory manageable |
 
+## H100 utilization
+
+If `nvtop` shows low GPU utilization, high CPU utilization, and plenty of free VRAM
+while training, the run is usually bottlenecked by tiny micro-batches, activation
+checkpoint recompute, or evaluation/checkpoint pauses. The conservative `config.yaml`
+uses micro-batch 1, gradient accumulation 16, ZeRO-3, and gradient checkpointing. That
+is safe, but it leaves a 95 GB H100 NVL underfed.
+
+For a single H100 NVL with roughly 95 GB VRAM, test the faster DeepSpeed profile:
+
+```bash
+WANDB_MODE=offline uv run torchrun --nproc_per_node=1 train.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --max-steps 20
+```
+
+This profile keeps the same effective batch size as the default run:
+
+```text
+default: micro_batch=1, gradient_accumulation_steps=16, effective batch=16
+fast:    micro_batch=2, gradient_accumulation_steps=8,  effective batch=16
+```
+
+It also disables gradient checkpointing, which uses more VRAM but avoids recomputation.
+If the 20-step smoke test fits comfortably and is faster, resume from the latest saved
+checkpoint with the fast profile:
+
+```bash
+uv run torchrun --nproc_per_node=1 train.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --resume-from-checkpoint outputs/stepaudio2-luganda-lora/checkpoint-STEP
+```
+
+Replace `checkpoint-STEP` with the newest checkpoint directory. If you get CUDA OOM,
+return to `config.yaml` or set `per_device_train_batch_size: 1` and
+`gradient_accumulation_steps: 16` in the fast profile.
+
 ## Train
 
 ```bash
@@ -207,8 +250,9 @@ uv run torchrun --nproc_per_node=1 train.py --config config.yaml
 ```
 
 Expected first-run behavior on an H100 NVL: preprocessing is dominated by target speech
-tokenization; training 50 hours for one epoch is likely in the 4-8 hour range depending
-on average utterance length, disk speed, and evaluation frequency.
+tokenization. With the conservative default config, a full epoch can still take many
+hours because micro-batch 1 plus gradient checkpointing underuses the GPU. Use the H100
+profile above if `nvtop` shows low utilization and plenty of free VRAM.
 
 Recommended tmux runbook for remote GPUs:
 
@@ -223,11 +267,19 @@ cd ~/jupyterlab-env/Step-Audio-2-mini
 source .venv/bin/activate
 
 export WANDB_PROJECT=stepaudio2-luganda-s2st
-export WANDB_LOG_MODEL=checkpoint
+export WANDB_LOG_MODEL=false
 export TOKENIZERS_PARALLELISM=false
 
 mkdir -p logs
 uv run torchrun --nproc_per_node=1 train.py --config config.yaml 2>&1 | tee logs/train-$(date +%Y%m%d-%H%M%S).log
+```
+
+For the H100 fast profile, change only the config path:
+
+```bash
+uv run torchrun --nproc_per_node=1 train.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  2>&1 | tee logs/train-fast-$(date +%Y%m%d-%H%M%S).log
 ```
 
 Useful tmux controls:
@@ -269,6 +321,12 @@ scheduler LR value:
 [optim-debug] stage=after_create_scheduler
 [optim-debug] scheduler_type=LambdaLR base_lrs=1 last_lrs=1
 ```
+
+For the full run, keep `debug_optimizer_state: false` in `config.yaml`; the optimizer
+diagnostics are useful for smoke tests but noisy after the scheduler bug is fixed. The
+default long-run config evaluates and saves every 1000 optimizer steps. With the current
+validation set, each full validation pass is roughly 9 minutes at eval batch size 1, so
+avoid very frequent evaluation unless you are actively debugging.
 
 ## Evaluate
 
