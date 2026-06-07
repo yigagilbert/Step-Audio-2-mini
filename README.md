@@ -1,5 +1,7 @@
 # Step-Audio 2 Mini Luganda-to-English S2ST LoRA Pipeline
 
+Repository: https://github.com/yigagilbert/Step-Audio-2-mini
+
 ## Research summary
 
 Step-Audio 2 is an end-to-end multimodal audio LLM: it consumes raw speech-derived
@@ -76,14 +78,31 @@ HF dataset
     +-- modeling.py
 ```
 
-## Install
+## Linux install with uv
 
 ```bash
-conda create -n stepaudio2-luganda python=3.10 -y
-conda activate stepaudio2-luganda
-pip install -r requirements.txt
+# Ubuntu/Debian host packages.
+sudo apt-get update
+sudo apt-get install -y git git-lfs ffmpeg libsndfile1 build-essential
 
+# Install uv if it is not already available.
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
+
+# Clone this training repo.
 git lfs install
+git clone https://github.com/yigagilbert/Step-Audio-2-mini.git
+cd Step-Audio-2-mini
+
+# Create and activate a project-local Python environment.
+uv venv --python 3.10 .venv
+source .venv/bin/activate
+
+# Recommended on H100/Linux: install CUDA PyTorch first, then the rest.
+uv pip install torch==2.3.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121
+uv pip install -r requirements.txt
+
+# Download Step-Audio 2 mini model assets and official inference helpers.
 git clone https://huggingface.co/stepfun-ai/Step-Audio-2-mini
 git clone https://github.com/stepfun-ai/Step-Audio2.git Step-Audio2
 
@@ -91,8 +110,16 @@ git clone https://github.com/stepfun-ai/Step-Audio2.git Step-Audio2
 export HF_TOKEN=hf_...
 ```
 
-If `s3tokenizer` or `onnxruntime` wheels need a CUDA-specific install on your H100 host,
-install those wheels first, then rerun `pip install -r requirements.txt`.
+If your remote GPU image uses CUDA 12.4 instead of CUDA 12.1, use the matching PyTorch
+wheel index from https://pytorch.org/get-started/locally/. If `s3tokenizer` or
+`onnxruntime` need CUDA-specific wheels on your host, install those with `uv pip install`
+inside `.venv`, then rerun `uv pip install -r requirements.txt`.
+
+Quick environment check:
+
+```bash
+uv run python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
 
 ## Data preparation
 
@@ -106,7 +133,7 @@ dur_ratio, src_speech_ratio, tgt_speech_ratio
 Run:
 
 ```bash
-python data_prep.py --config config.yaml --device cuda
+uv run python data_prep.py --config config.yaml --device cuda
 ```
 
 Defaults keep pairs with `0.5 <= dur_ratio <= 2.0`, source/target speech ratios >=0.7,
@@ -132,7 +159,7 @@ utterances before SFT if you want to keep them.
 ## Train
 
 ```bash
-torchrun --nproc_per_node=1 train.py --config config.yaml
+uv run torchrun --nproc_per_node=1 train.py --config config.yaml
 ```
 
 Expected first-run behavior on an H100 NVL: preprocessing is dominated by target speech
@@ -142,10 +169,10 @@ on average utterance length, disk speed, and evaluation frequency.
 ## Evaluate
 
 ```bash
-python eval.py --config config.yaml --split test --adapter outputs/stepaudio2-luganda-lora/final
+uv run python eval.py --config config.yaml --split test --adapter outputs/stepaudio2-luganda-lora/final
 
 # Optional COMET if installed:
-python eval.py --config config.yaml --split test --comet-model Unbabel/wmt22-comet-da
+uv run python eval.py --config config.yaml --split test --comet-model Unbabel/wmt22-comet-da
 ```
 
 The evaluator reports BLEU and WER over the generated English text channel. For final
@@ -154,7 +181,7 @@ S2ST acceptance, also run native-speaker review and ASR-based WER on generated w
 ## Inference
 
 ```bash
-python inference_example.py \
+uv run python inference_example.py \
   --config config.yaml \
   --audio path/to/luganda.wav \
   --adapter outputs/stepaudio2-luganda-lora/final \
@@ -166,7 +193,7 @@ For low-latency service, merge the adapter and serve with the official Step-Audi
 Docker image after validating that your vLLM build supports the merged custom model:
 
 ```bash
-python scripts/merge_lora.py --config config.yaml --output outputs/merged-stepaudio2-luganda
+uv run python scripts/merge_lora.py --config config.yaml --output outputs/merged-stepaudio2-luganda
 ```
 
 Then adapt the official command from the Step-Audio2 README with
@@ -176,7 +203,7 @@ Then adapt the official command from the Step-Audio2 README with
 Streaming client:
 
 ```bash
-python streaming_vllm_example.py \
+uv run python streaming_vllm_example.py \
   --config config.yaml \
   --audio path/to/luganda.wav \
   --api-url http://localhost:8000/v1/chat/completions \
@@ -188,11 +215,10 @@ python streaming_vllm_example.py \
 ## Push to Hugging Face
 
 ```bash
-python scripts/push_to_hub.py \
+uv run python scripts/push_to_hub.py \
   --folder outputs/stepaudio2-luganda-lora/final \
   --repo-id your-org/stepaudio2-mini-luganda-english-s2st-lora
 ```
 
 The pushed adapter card is Apache-2.0. Check and document the dataset license before
 publishing trained weights.
-# Step-Audio-2-mini
