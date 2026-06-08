@@ -345,6 +345,31 @@ uv run python eval.py --config config.yaml --split validation --comet-model Unba
 The evaluator reports BLEU and WER over the generated English text channel. For final
 S2ST acceptance, also run native-speaker review and ASR-based WER on generated wavs.
 
+## Cascade baseline
+
+Use `eval_cascade.py` to compare the fine-tuned end-to-end model against an ASR+MT
+cascade on the exact same prepared split and first-N rows used by `eval.py`.
+The default cascade is:
+
+```text
+Luganda wav -> Sunbird/asr-whisper-large-v3-salt -> facebook/nllb-200-distilled-1.3B -> English text
+```
+
+Run the 200-sample baseline with the same validation rows as the adapter eval:
+
+```bash
+uv run python eval_cascade.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --split validation \
+  --limit 200 \
+  --comet-model Unbabel/wmt22-comet-da
+```
+
+The script writes `cascade_validation_predictions.jsonl` and
+`cascade_validation_metrics.json` under `outputs/stepaudio2-luganda-lora/eval/`.
+The primary `bleu`, `wer_on_text_channel`, and optional `comet` fields are computed the
+same way as `eval.py`; normalized BLEU/chrF/WER are included as diagnostics.
+
 To listen to generated speech from an eval JSONL, synthesize a small sample set:
 
 ```bash
