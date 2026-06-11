@@ -6,6 +6,12 @@ scipy>=1.11.0
 unbabel-comet>=2.2.0
 onnxruntime-gpu>=1.18.0
 
+# Cascade TTS baseline with Sunbird/orpheus-3b-tts-multilingual. The vLLM pin
+# keeps the install aligned with the torch/torchaudio 2.5.x pair in the setup
+# script.
+vllm==0.7.3
+snac>=1.2.1
+
 # BLASER 2.0 via SONAR. Install fairseq2 first with the setup script because
 # fairseq2 wheels are CUDA/PyTorch-version specific.
 sonar-space~=0.5.0

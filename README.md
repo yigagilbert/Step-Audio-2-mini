@@ -352,7 +352,7 @@ cascade on the exact same prepared split and first-N rows used by `eval.py`.
 The default cascade is:
 
 ```text
-Luganda wav -> Sunbird/asr-whisper-large-v3-salt -> facebook/nllb-200-distilled-1.3B -> English text
+Luganda wav -> Sunbird/asr-whisper-large-v3-salt -> Sunbird/translate-nllb-3.3b-salt -> English text
 ```
 
 Run the 200-sample baseline with the same validation rows as the adapter eval:
@@ -369,6 +369,18 @@ The script writes `cascade_validation_predictions.jsonl` and
 `cascade_validation_metrics.json` under `outputs/stepaudio2-luganda-lora/eval/`.
 The primary `bleu`, `wer_on_text_channel`, and optional `comet` fields are computed the
 same way as `eval.py`; normalized BLEU/chrF/WER are included as diagnostics.
+
+To synthesize cascade English text into English speech for speech metrics, use
+Sunbird Orpheus:
+
+```bash
+uv run python scripts/synthesize_cascade_tts.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --split validation \
+  --predictions outputs/stepaudio2-luganda-lora/eval/cascade_validation_predictions.jsonl \
+  --output-dir outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples \
+  --limit 200
+```
 
 To listen to generated speech from an eval JSONL, synthesize a small sample set:
 

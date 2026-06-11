@@ -23,8 +23,9 @@ It prepares only the validation split and computes:
 - `SpeechBERTScore` is implemented as reference-aware BERTScore over WavLM speech
   frame embeddings.
 - `MCD` is computed as MFCC + DTW mel-cepstral distortion. Lower is better.
-- Cascade audio metrics require a TTS stage. This runbook uses `microsoft/speecht5_tts`
-  so the cascade is `ASR -> MT -> TTS`.
+- Cascade audio metrics require a TTS stage. This runbook uses
+  `Sunbird/orpheus-3b-tts-multilingual`, so the cascade is
+  `ASR -> MT -> TTS`.
 
 BLASER/SONAR setup follows the official SONAR package guidance:
 `sonar-space` requires a matching `fairseq2` wheel for the installed PyTorch/CUDA build.
@@ -233,9 +234,13 @@ python scripts/synthesize_eval_audio.py \
 ## 6. Evaluate the Cascade Text Pipeline
 
 ```bash
+mkdir -p outputs/stepaudio2-luganda-lora/eval
+
 python eval_cascade.py \
   --config configs/h100_nvl_fast_deepspeed.yaml \
   --split validation \
+  --asr-model Sunbird/asr-whisper-large-v3-salt \
+  --mt-model Sunbird/translate-nllb-3.3b-salt \
   --limit 200 \
   --comet-model Unbabel/wmt22-comet-da \
   | tee outputs/stepaudio2-luganda-lora/eval/cascade_metrics_200.txt
@@ -249,6 +254,8 @@ python scripts/synthesize_cascade_tts.py \
   --split validation \
   --predictions outputs/stepaudio2-luganda-lora/eval/cascade_validation_predictions.jsonl \
   --output-dir outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples \
+  --tts-model Sunbird/orpheus-3b-tts-multilingual \
+  --speaker salt_eng_0001 \
   --limit 200
 ```
 
@@ -310,6 +317,6 @@ Speech metrics:
 - Higher SpeechBERTScore F1 is better.
 - Lower MCD is better.
 
-MCD is sensitive to speaker, duration, and prosody. Since the cascade uses SpeechT5 and
-the fine-tuned model uses Step-Audio token2wav, MCD should be treated as an audio
-similarity diagnostic rather than a pure translation-quality score.
+MCD is sensitive to speaker, duration, and prosody. Since the cascade uses Orpheus
+and the fine-tuned model uses Step-Audio token2wav, MCD should be treated as an
+audio similarity diagnostic rather than a pure translation-quality score.

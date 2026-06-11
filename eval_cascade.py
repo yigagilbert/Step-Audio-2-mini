@@ -110,10 +110,33 @@ def transcribe_batch(asr, wav_paths: list[Path], batch_size: int) -> list[str]:
     return texts
 
 
-def load_mt(mt_model: str, src_lang: str, device: torch.device):
-    dtype = torch.float16 if device.type == "cuda" else torch.float32
+def resolve_mt_dtype(device: torch.device, dtype_arg: str) -> torch.dtype:
+    if dtype_arg == "auto":
+        if device.type == "cuda":
+            return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        return torch.float32
+    return {
+        "float32": torch.float32,
+        "float16": torch.float16,
+        "bfloat16": torch.bfloat16,
+    }[dtype_arg]
+
+
+def load_mt(mt_model: str, src_lang: str, device: torch.device, dtype: torch.dtype):
     tokenizer = AutoTokenizer.from_pretrained(mt_model, src_lang=src_lang)
-    model = AutoModelForSeq2SeqLM.from_pretrained(mt_model, torch_dtype=dtype)
+    model_kwargs = {"attn_implementation": "eager"}
+    for dtype_key in ("dtype", "torch_dtype"):
+        try:
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                mt_model,
+                **{dtype_key: dtype},
+                **model_kwargs,
+            )
+            break
+        except TypeError:
+            continue
+    else:
+        model = AutoModelForSeq2SeqLM.from_pretrained(mt_model, torch_dtype=dtype)
     model.to(device).eval()
     if hasattr(tokenizer, "src_lang"):
         tokenizer.src_lang = src_lang
@@ -125,6 +148,7 @@ def translate_batch(
     tokenizer,
     model,
     texts: list[str],
+    src_lang: str,
     tgt_lang: str,
     device: torch.device,
     max_input_tokens: int,
@@ -133,7 +157,12 @@ def translate_batch(
 ) -> list[str]:
     if not texts:
         return []
-    forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
+    if hasattr(tokenizer, "src_lang"):
+        tokenizer.src_lang = src_lang
+    if hasattr(tokenizer, "lang_code_to_id"):
+        forced_bos_token_id = tokenizer.lang_code_to_id.get(tgt_lang)
+    else:
+        forced_bos_token_id = tokenizer.convert_tokens_to_ids(tgt_lang)
     if forced_bos_token_id is None or forced_bos_token_id < 0:
         raise ValueError(f"Could not resolve target language token {tgt_lang!r}.")
     inputs = tokenizer(
@@ -218,15 +247,21 @@ def main() -> None:
     parser.add_argument("--split", default="validation")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--asr-model", default="Sunbird/asr-whisper-large-v3-salt")
-    parser.add_argument("--mt-model", default="facebook/nllb-200-distilled-1.3B")
+    parser.add_argument("--mt-model", default="Sunbird/translate-nllb-3.3b-salt")
     parser.add_argument("--src-lang", default="lug_Latn", help="NLLB source language code.")
     parser.add_argument("--tgt-lang", default="eng_Latn", help="NLLB target language code.")
     parser.add_argument("--device", default=None)
+    parser.add_argument(
+        "--mt-dtype",
+        choices=("auto", "float32", "float16", "bfloat16"),
+        default="auto",
+        help="Torch dtype for the MT model. auto uses bf16 on supported CUDA GPUs.",
+    )
     parser.add_argument("--asr-batch-size", type=int, default=8)
     parser.add_argument("--mt-batch-size", type=int, default=8)
     parser.add_argument("--max-input-tokens", type=int, default=256)
     parser.add_argument("--max-new-tokens", type=int, default=256)
-    parser.add_argument("--num-beams", type=int, default=5)
+    parser.add_argument("--num-beams", type=int, default=4)
     parser.add_argument("--comet-model", default=None)
     parser.add_argument("--output-jsonl", default=None)
     parser.add_argument("--metrics-path", default=None)
@@ -251,11 +286,12 @@ def main() -> None:
     src_lang = resolve_nllb_lang(args.src_lang)
     tgt_lang = resolve_nllb_lang(args.tgt_lang)
     device, pipeline_device = resolve_device(args.device)
+    mt_dtype = resolve_mt_dtype(device, args.mt_dtype)
 
     print(f"Loading ASR model: {args.asr_model}")
     asr = build_asr_pipeline(args.asr_model, device, pipeline_device)
-    print(f"Loading MT model: {args.mt_model} ({src_lang} -> {tgt_lang})")
-    mt_tokenizer, mt_model = load_mt(args.mt_model, src_lang, device)
+    print(f"Loading MT model: {args.mt_model} ({src_lang} -> {tgt_lang}, {mt_dtype})")
+    mt_tokenizer, mt_model = load_mt(args.mt_model, src_lang, device, mt_dtype)
 
     outputs: list[dict[str, Any]] = []
     t_asr_total = 0.0
@@ -277,6 +313,7 @@ def main() -> None:
                     mt_tokenizer,
                     mt_model,
                     mt_texts,
+                    src_lang,
                     tgt_lang,
                     device,
                     args.max_input_tokens,
@@ -309,6 +346,7 @@ def main() -> None:
             "mt_model": args.mt_model,
             "src_lang": src_lang,
             "tgt_lang": tgt_lang,
+            "mt_dtype": str(mt_dtype).replace("torch.", ""),
             "asr_batch_size": args.asr_batch_size,
             "mt_batch_size": args.mt_batch_size,
             "num_beams": args.num_beams,
