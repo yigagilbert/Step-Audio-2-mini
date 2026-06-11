@@ -148,7 +148,11 @@ class SpeechBERTScorer:
     def __init__(self, model_name: str, device: torch.device) -> None:
         self.device = device
         self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name).to(device).eval()
+        self.model = (
+            AutoModel.from_pretrained(model_name, use_safetensors=True)
+            .to(device)
+            .eval()
+        )
 
     @torch.inference_mode()
     def embed(self, audio_path: Path) -> torch.Tensor:
