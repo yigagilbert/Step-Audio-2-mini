@@ -454,11 +454,28 @@ uv run python streaming_vllm_example.py \
 
 ## Push to Hugging Face
 
+Adapter-only repo:
+
 ```bash
 uv run python scripts/push_to_hub.py \
   --folder outputs/stepaudio2-luganda-lora/final \
   --repo-id your-org/stepaudio2-mini-luganda-english-s2st-lora
 ```
 
-The pushed adapter card is Apache-2.0. Check and document the dataset license before
-publishing trained weights.
+Full merged-model repo:
+
+```bash
+uv run python scripts/push_full_model_to_hub.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model stepfun-ai/Step-Audio-2-mini \
+  --adapter your-org/stepaudio2-mini-luganda-english-s2st-lora \
+  --repo-id your-org/stepaudio2-mini-luganda-english-s2st
+```
+
+Use the adapter-only repo when you want a small PEFT artifact. Use the full merged-model
+repo when deployment should load one Hugging Face model without separately attaching the
+LoRA adapter. The full-model script can also merge from a local folder by replacing
+`--adapter` with `outputs/stepaudio2-luganda-lora/final`.
+
+The pushed adapter card is Apache-2.0. Because the full merged-model repo contains base
+weights, check and document the base model and dataset licenses before publishing.
