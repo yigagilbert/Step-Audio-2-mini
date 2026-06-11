@@ -244,6 +244,10 @@ python scripts/synthesize_eval_audio.py \
   --limit 200
 ```
 
+If this writes `0 wav files`, the base model did not emit valid Step-Audio speech
+tokens for this task. Keep the base model in text metrics and BLASER, but exclude it
+from SpeechBERTScore/MCD because those require generated audio.
+
 If synthesis fails with `google.protobuf.message.DecodeError: Error parsing message`
 while loading `speech_tokenizer_v2_25hz.onnx`, the local ONNX file is probably a Git
 LFS pointer or incomplete download. Check it:
@@ -311,12 +315,11 @@ PyTorch/CUDA build.
 
 ```bash
 python eval_advanced_metrics.py \
-  --system base=outputs/stepaudio2-luganda-lora/eval/base_audio_samples/manifest.jsonl \
   --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
   --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
   --align-ids \
   --skip-blaser \
-  --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200_with_base_no_blaser.json
+  --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200_no_blaser.json
 ```
 
 For a faster smoke test, also add `--skip-speechbertscore`.
@@ -334,7 +337,6 @@ RECREATE=1 scripts/setup_blaser_env.sh
 source .venv-blaser/bin/activate
 
 python eval_advanced_metrics.py \
-  --system base=outputs/stepaudio2-luganda-lora/eval/base_audio_samples/manifest.jsonl \
   --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
   --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
   --align-ids \

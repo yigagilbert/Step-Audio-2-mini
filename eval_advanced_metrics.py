@@ -60,6 +60,13 @@ def get_path(record: dict[str, Any], *keys: str) -> Path | None:
 def filter_to_common_ids(
     systems: dict[str, list[dict[str, Any]]],
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    empty_systems = [name for name, records in systems.items() if not records]
+    if empty_systems:
+        names = ", ".join(repr(name) for name in empty_systems)
+        raise ValueError(
+            f"Cannot align IDs because these system manifest(s) are empty: {names}. "
+            "Run speech metrics only on systems that produced audio manifests."
+        )
     id_sets = []
     for name, records in systems.items():
         ids = {str(record.get("id")) for record in records if record.get("id") is not None}
