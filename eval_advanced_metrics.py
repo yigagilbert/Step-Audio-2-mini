@@ -59,9 +59,10 @@ def get_path(record: dict[str, Any], *keys: str) -> Path | None:
 
 def filter_to_common_ids(
     systems: dict[str, list[dict[str, Any]]],
+    allow_empty: bool = False,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     empty_systems = [name for name, records in systems.items() if not records]
-    if empty_systems:
+    if empty_systems and not allow_empty:
         names = ", ".join(repr(name) for name in empty_systems)
         raise ValueError(
             f"Cannot align IDs because these system manifest(s) are empty: {names}. "
@@ -100,6 +101,22 @@ def compute_chrf(records: list[dict[str, Any]]) -> float:
     predictions = [get_text(row, "prediction", "hyp", "hyp_text") for row in records]
     references = [get_text(row, "reference", "ref", "ref_text") for row in records]
     return sacrebleu.corpus_chrf(predictions, [references]).score if predictions else 0.0
+
+
+def attach_sources_from_prepared(
+    records: list[dict[str, Any]],
+    prepared_by_id: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    enriched = []
+    for record in records:
+        row = dict(record)
+        row_id = row.get("id")
+        if row_id is not None:
+            prepared = prepared_by_id.get(str(row_id), {})
+            row.setdefault("source", prepared.get("text_lug", ""))
+            row.setdefault("reference", prepared.get("text_eng", ""))
+        enriched.append(row)
+    return enriched
 
 
 def compute_mcd_pair(
@@ -280,6 +297,11 @@ def main() -> None:
     parser.add_argument("--device", default=None)
     parser.add_argument("--src-lang", default="lug_Latn")
     parser.add_argument("--mt-lang", default="eng_Latn")
+    parser.add_argument(
+        "--prepared-jsonl",
+        default=None,
+        help="Prepared split JSONL used to fill missing source/reference fields.",
+    )
     parser.add_argument("--skip-blaser", action="store_true")
     parser.add_argument("--skip-speechbertscore", action="store_true")
     parser.add_argument("--skip-mcd", action="store_true")
@@ -293,6 +315,13 @@ def main() -> None:
 
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     systems = {name: read_records(path) for name, path in args.system}
+    if args.prepared_jsonl:
+        prepared_rows = read_records(args.prepared_jsonl)
+        prepared_by_id = {str(row["id"]): row for row in prepared_rows if row.get("id") is not None}
+        systems = {
+            name: attach_sources_from_prepared(records, prepared_by_id)
+            for name, records in systems.items()
+        }
     aligned_ids = None
     if args.align_ids:
         systems, aligned_ids = filter_to_common_ids(systems)

@@ -337,8 +337,10 @@ RECREATE=1 scripts/setup_blaser_env.sh
 source .venv-blaser/bin/activate
 
 python eval_advanced_metrics.py \
-  --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
-  --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
+  --system base=outputs/stepaudio2-luganda-lora/eval/base_validation_predictions.jsonl \
+  --system stepaudio=outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl \
+  --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_validation_predictions.jsonl \
+  --prepared-jsonl data/processed/luganda_english_cleaned_v1/validation.jsonl \
   --align-ids \
   --skip-speechbertscore \
   --skip-mcd \
