@@ -47,6 +47,19 @@ git clone https://github.com/stepfun-ai/Step-Audio2.git Step-Audio2
 source .venv/bin/activate
 ```
 
+By default the setup script installs `torch==2.5.1` and `torchaudio==2.5.1` from the
+CUDA 12.1 PyTorch wheel index. This avoids accidentally installing PyPI wheels that
+expect CUDA 13 runtime libraries such as `libcudart.so.13`.
+
+To choose another supported CUDA 12 wheel index:
+
+```bash
+PYTORCH_VERSION=2.5.1 \
+TORCHAUDIO_VERSION=2.5.1 \
+PYTORCH_CUDA_INDEX=https://download.pytorch.org/whl/cu124 \
+./scripts/setup_h100_eval_env.sh
+```
+
 If `fairseq2` fails to install, check the PyTorch/CUDA version:
 
 ```bash
@@ -58,6 +71,35 @@ PY
 ```
 
 Then install the matching wheel from the `fairseq2` package index documented by SONAR.
+
+### Repair an Existing `.venv` with a CUDA 13 torchaudio Error
+
+If importing `torchaudio` fails with:
+
+```text
+OSError: libcudart.so.13: cannot open shared object file
+```
+
+reinstall matching CUDA 12.x PyTorch wheels inside the active venv:
+
+```bash
+source .venv/bin/activate
+python -m pip uninstall -y torch torchaudio torchvision
+python -m pip install \
+  torch==2.5.1 \
+  torchaudio==2.5.1 \
+  --index-url https://download.pytorch.org/whl/cu121
+
+python - <<'PY'
+import torch
+import torchaudio
+print("torch", torch.__version__, "cuda", torch.version.cuda)
+print("torchaudio", torchaudio.__version__)
+print("cuda available", torch.cuda.is_available())
+PY
+```
+
+Then rerun the validation-only data preparation command.
 
 ## 3. Log In to Hugging Face
 
@@ -83,6 +125,9 @@ This saves:
 - reference English wavs for MCD/SpeechBERTScore
 
 It skips target audio tokenization because we are not training.
+`data_prep.py` loads only the requested split and casts Hugging Face audio with
+`decode=False`, so it avoids the `torchcodec` decoder path that can fail when a
+TorchCodec wheel expects CUDA 13 libraries.
 
 ```bash
 python data_prep.py \

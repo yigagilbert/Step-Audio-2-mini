@@ -203,9 +203,15 @@ def main() -> None:
 
     dataset_cfg = cfg["dataset"]
     token = os.environ.get(dataset_cfg.get("token_env", "HF_TOKEN"))
-    dataset = load_dataset(dataset_cfg["name"], token=token)
-    if not isinstance(dataset, DatasetDict):
-        raise ValueError("Expected a DatasetDict with train/validation/test splits.")
+    selected_splits = None
+    if args.splits:
+        selected_splits = {split.strip() for split in args.splits.split(",") if split.strip()}
+        unknown_splits = selected_splits - set(dataset_cfg["splits"])
+        if unknown_splits:
+            raise ValueError(
+                f"Unknown split(s) requested: {sorted(unknown_splits)}. "
+                f"Known output splits: {sorted(dataset_cfg['splits'])}"
+            )
 
     target_format = cfg["format"]["target_format"]
     target_tokenizer = None
@@ -216,24 +222,39 @@ def main() -> None:
             args.device,
         )
 
-    selected_splits = None
-    if args.splits:
-        selected_splits = {split.strip() for split in args.splits.split(",") if split.strip()}
+    if selected_splits is None:
+        dataset = load_dataset(dataset_cfg["name"], token=token)
+        if not isinstance(dataset, DatasetDict):
+            raise ValueError("Expected a DatasetDict with train/validation/test splits.")
+        split_items = [
+            (out_split, hf_split, dataset[hf_split])
+            for out_split, hf_split in dataset_cfg["splits"].items()
+            if hf_split in dataset
+        ]
+    else:
+        split_items = [
+            (
+                out_split,
+                dataset_cfg["splits"][out_split],
+                load_dataset(
+                    dataset_cfg["name"],
+                    split=dataset_cfg["splits"][out_split],
+                    token=token,
+                ),
+            )
+            for out_split in dataset_cfg["splits"]
+            if out_split in selected_splits
+        ]
 
-    for out_split, hf_split in dataset_cfg["splits"].items():
-        if selected_splits is not None and out_split not in selected_splits:
-            continue
-        if hf_split not in dataset:
-            print(f"[WARN] Dataset split {hf_split!r} not found; skipping {out_split}.")
-            continue
-        split = dataset[hf_split].cast_column(
+    for out_split, hf_split, split in split_items:
+        split = split.cast_column(
             "audio_lug",
-            Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"]),
+            Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"], decode=False),
         )
         if target_format != "text_only":
             split = split.cast_column(
                 "audio_eng",
-                Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"]),
+                Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"], decode=False),
             )
         validate_schema(split, dataset_cfg["required_columns"])
         prepare_split(
