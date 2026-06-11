@@ -297,7 +297,7 @@ a CUDA 12.4 build for PyTorch 2.6.0, so the helper uses that combination.
 
 ```bash
 deactivate 2>/dev/null || true
-scripts/setup_blaser_env.sh
+RECREATE=1 scripts/setup_blaser_env.sh
 source .venv-blaser/bin/activate
 
 python eval_advanced_metrics.py \

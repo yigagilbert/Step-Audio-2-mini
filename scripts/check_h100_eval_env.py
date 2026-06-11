@@ -106,6 +106,15 @@ def torch_summary() -> dict[str, Any]:
         return {"torch_error": f"{type(exc).__name__}: {exc}"}
 
 
+def torch_version_startswith(prefix: str) -> bool:
+    try:
+        import torch
+
+        return torch.__version__.startswith(prefix)
+    except Exception:
+        return False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Check imports needed for the H100 Step-Audio evaluation stack."
@@ -161,6 +170,13 @@ def main() -> None:
                 print(f"         {result['error']}")
             if result["note"]:
                 print(f"         {result['note']}")
+        if args.profile == "blaser" and not torch_version_startswith("2.6."):
+            print()
+            print("BLASER environment warning:")
+            print("Expected torch 2.6.x for the fairseq2 cu124 wheel used here.")
+            print("Recreate the BLASER env with:")
+            print("deactivate 2>/dev/null || true")
+            print("RECREATE=1 scripts/setup_blaser_env.sh")
         if missing:
             print()
             print("Install missing packages:")
