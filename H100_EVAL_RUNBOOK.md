@@ -293,7 +293,8 @@ For a faster smoke test, also add `--skip-speechbertscore`.
 
 Run BLASER in a separate environment so the main Step-Audio/Orpheus `.venv` stays
 on its known-good Torch build. The fairseq2 Linux wheel matrix currently includes
-a CUDA 12.4 build for PyTorch 2.6.0, so the helper uses that combination.
+a CUDA 12.4 build for PyTorch 2.6.0 on the fairseq2 `0.6` line, so the helper
+pins that combination and constrains later installs from upgrading Torch.
 
 ```bash
 deactivate 2>/dev/null || true

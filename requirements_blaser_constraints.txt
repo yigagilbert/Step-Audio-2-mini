@@ -1,0 +1,5 @@
+# Keep BLASER env on the PyTorch/fairseq2 pair used by scripts/setup_blaser_env.sh.
+torch==2.6.0
+torchaudio==2.6.0
+fairseq2==0.6.*
+

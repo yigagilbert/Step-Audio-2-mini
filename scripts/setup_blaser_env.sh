@@ -5,6 +5,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${VENV_DIR:-.venv-blaser}"
 PYTORCH_VERSION="${PYTORCH_VERSION:-2.6.0}"
 TORCHAUDIO_VERSION="${TORCHAUDIO_VERSION:-2.6.0}"
+FAIRSEQ2_VERSION="${FAIRSEQ2_VERSION:-0.6.*}"
 PYTORCH_CUDA_INDEX="${PYTORCH_CUDA_INDEX:-https://download.pytorch.org/whl/cu124}"
 FAIRSEQ2_INDEX="${FAIRSEQ2_INDEX:-https://fair.pkg.atmeta.com/fairseq2/whl/pt2.6.0/cu124}"
 RECREATE="${RECREATE:-0}"
@@ -32,11 +33,15 @@ python -m pip install \
   "torchaudio==${TORCHAUDIO_VERSION}" \
   --index-url "${PYTORCH_CUDA_INDEX}"
 
-echo "Installing fairseq2 from ${FAIRSEQ2_INDEX}"
-python -m pip install fairseq2 --extra-index-url "${FAIRSEQ2_INDEX}"
+echo "Installing fairseq2 ${FAIRSEQ2_VERSION} from ${FAIRSEQ2_INDEX}"
+python -m pip install \
+  "fairseq2==${FAIRSEQ2_VERSION}" \
+  --extra-index-url "${FAIRSEQ2_INDEX}"
 
 echo "Installing BLASER evaluation requirements"
-python -m pip install -r requirements_blaser_eval.txt
+python -m pip install \
+  -r requirements_blaser_eval.txt \
+  -c requirements_blaser_constraints.txt
 
 echo "Checking BLASER environment"
 python scripts/check_h100_eval_env.py --profile blaser
