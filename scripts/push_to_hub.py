@@ -141,7 +141,9 @@ def main() -> None:
     args = parser.parse_args()
 
     folder = Path(args.folder)
-    if not folder.exists():
+    if args.readme_only:
+        folder.mkdir(parents=True, exist_ok=True)
+    elif not folder.exists():
         raise FileNotFoundError(folder)
     readme = write_model_card(folder, repo_id=args.repo_id, overwrite=args.overwrite_readme)
 
