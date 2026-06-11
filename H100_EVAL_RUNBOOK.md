@@ -191,6 +191,7 @@ Then synthesize generated audio for speech metrics:
 ```bash
 python scripts/synthesize_eval_audio.py \
   --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model Step-Audio-2-mini \
   --split validation \
   --predictions outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl \
   --stepaudio2-repo Step-Audio2 \
@@ -199,6 +200,35 @@ python scripts/synthesize_eval_audio.py \
 ```
 
 For full validation, omit `--limit`.
+
+If synthesis fails with `google.protobuf.message.DecodeError: Error parsing message`
+while loading `speech_tokenizer_v2_25hz.onnx`, the local ONNX file is probably a Git
+LFS pointer or incomplete download. Check it:
+
+```bash
+ls -lh Step-Audio-2-mini/token2wav/speech_tokenizer_v2_25hz.onnx
+head -n 3 Step-Audio-2-mini/token2wav/speech_tokenizer_v2_25hz.onnx
+```
+
+If it starts with `version https://git-lfs.github.com/spec`, repair it:
+
+```bash
+git lfs install
+git -C Step-Audio-2-mini lfs pull
+```
+
+Or bypass the local folder and download the token2wav assets from Hugging Face:
+
+```bash
+python scripts/synthesize_eval_audio.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model stepfun-ai/Step-Audio-2-mini \
+  --split validation \
+  --predictions outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl \
+  --stepaudio2-repo Step-Audio2 \
+  --output-dir outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples \
+  --limit 200
+```
 
 ## 6. Evaluate the Cascade Text Pipeline
 
