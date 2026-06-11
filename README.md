@@ -477,5 +477,23 @@ repo when deployment should load one Hugging Face model without separately attac
 LoRA adapter. The full-model script can also merge from a local folder by replacing
 `--adapter` with `outputs/stepaudio2-luganda-lora/final`.
 
+To refresh only the Hugging Face model cards with the evaluation tables:
+
+```bash
+uv run python scripts/push_to_hub.py \
+  --folder outputs/stepaudio2-luganda-lora/final \
+  --repo-id your-org/stepaudio2-mini-luganda-english-s2st-lora \
+  --overwrite-readme \
+  --readme-only
+
+uv run python scripts/push_full_model_to_hub.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model stepfun-ai/Step-Audio-2-mini \
+  --adapter your-org/stepaudio2-mini-luganda-english-s2st-lora \
+  --repo-id your-org/stepaudio2-mini-luganda-english-s2st \
+  --overwrite-readme \
+  --readme-only
+```
+
 The pushed adapter card is Apache-2.0. Because the full merged-model repo contains base
 weights, check and document the base model and dataset licenses before publishing.

@@ -28,6 +28,35 @@ tags:
 - english
 - stepaudio2
 - merged-lora
+model-index:
+- name: Step-Audio 2 Mini Luganda-to-English S2ST
+  results:
+  - task:
+      type: speech-translation
+      name: Luganda-to-English speech translation
+    dataset:
+      type: yigagilbert/luganda-english-cleaned-v1-split
+      name: Luganda-English Cleaned v1 Split
+      split: validation
+    metrics:
+    - type: bleu
+      name: BLEU
+      value: 32.530
+    - type: chrf
+      name: chrF
+      value: 54.535
+    - type: wer
+      name: WER on generated English text
+      value: 0.574
+    - type: comet
+      name: COMET
+      value: 0.717
+    - type: blaser_2_0_ref
+      name: BLASER 2.0 ref
+      value: 3.762
+    - type: blaser_2_0_qe
+      name: BLASER 2.0 QE
+      value: 3.723
 ---
 
 # Step-Audio 2 Mini Luganda-to-English S2ST
@@ -53,9 +82,45 @@ with native speakers before production use.
 
 ## Evaluation Summary
 
-On the 200-sample validation comparison used during development, the fine-tuned model
-substantially improved over the unfine-tuned base model and approached the cascade text
-baseline while preserving an end-to-end speech-to-speech architecture.
+The table below summarizes the held-out validation evaluation used during development.
+All text metrics were computed on 200 validation examples. Speech metrics were computed
+on the aligned 197-example subset for which generated audio existed.
+
+This full model was created by merging the LoRA adapter into the base model. The metrics
+below were generated with the adapter-loaded fine-tuned model before merge; the merged
+model contains the same adapted weights and is expected to match these results aside
+from normal deterministic or runtime differences. Re-run evaluation directly on this
+repository before a strict release if exact reproducibility is required.
+
+### Text and Semantic Metrics
+
+| System | Loading Form | Count | BLEU higher | chrF higher | WER lower | COMET higher | BLASER ref higher | BLASER QE higher |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Base Step-Audio-2-mini | Base only | 200 | 0.012 | 5.152 | 10.702 | 0.386 | 1.713 | 2.164 |
+| Fine-tuned Step-Audio | Base + LoRA adapter | 200 | 32.530 | 54.535 | 0.574 | 0.717 | 3.762 | 3.723 |
+| This full merged model | Same adapted weights, merged | 200 | 32.530* | 54.535* | 0.574* | 0.717* | 3.762* | 3.723* |
+| Cascade baseline | ASR + MT + TTS | 200 | 36.778 | 57.971 | 0.521 | 0.737 | 3.839 | 3.776 |
+
+`*` The full merged row reflects the adapter evaluation because this repository is
+produced by folding the evaluated LoRA adapter into the same base model.
+
+### Speech Metrics
+
+| System | Count | chrF higher | SpeechBERT P higher | SpeechBERT R higher | SpeechBERT F1 higher | MCD lower |
+|---|---:|---:|---:|---:|---:|---:|
+| Fine-tuned Step-Audio | 197 | 54.582 | 0.644 | 0.648 | 0.645 | 629.718 |
+| This full merged model | 197 | 54.582* | 0.644* | 0.648* | 0.645* | 629.718* |
+| Cascade baseline | 197 | 57.893 | 0.603 | 0.622 | 0.612 | 613.212 |
+
+The unfine-tuned base model emitted no valid speech-token sequences in this 200-sample
+run, so SpeechBERTScore and MCD were not computed for it.
+
+### Interpretation
+
+The fine-tuned Step-Audio model substantially improves over the base model and becomes
+a viable end-to-end Luganda-to-English speech translation system. The cascade remains
+stronger on text and semantic metrics, while the fine-tuned Step-Audio system is simpler
+to deploy and scored higher on the WavLM-based SpeechBERTScore F1 proxy.
 
 ## Notes
 
@@ -104,6 +169,11 @@ def parse_args() -> argparse.Namespace:
         "--overwrite-readme",
         action="store_true",
         help="Overwrite an existing README.md in the merged model folder.",
+    )
+    parser.add_argument(
+        "--readme-only",
+        action="store_true",
+        help="Upload only README.md/model card instead of the full merged model folder.",
     )
     parser.add_argument(
         "--commit-message",
@@ -206,6 +276,18 @@ def push_folder(output: Path, repo_id: str, private: bool, commit_message: str) 
     )
 
 
+def push_readme(readme: Path, repo_id: str, private: bool) -> None:
+    api = HfApi()
+    api.create_repo(repo_id, repo_type="model", private=private, exist_ok=True)
+    api.upload_file(
+        path_or_fileobj=str(readme),
+        path_in_repo="README.md",
+        repo_id=repo_id,
+        repo_type="model",
+        commit_message="Update model card with evaluation results",
+    )
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_config(args.config)
@@ -213,18 +295,27 @@ def main() -> None:
     adapter = resolve_adapter_ref(cfg, args.adapter)
     output = Path(args.output)
 
-    if args.skip_merge:
+    if args.readme_only:
+        output.mkdir(parents=True, exist_ok=True)
+    elif args.skip_merge:
         if not output.exists():
             raise FileNotFoundError(output)
     else:
         print(f"Merging adapter '{adapter}' into base model '{base_model}'")
         merge_model(cfg, base_model, adapter, output)
 
-    if args.include_token2wav_assets:
+    if args.include_token2wav_assets and not args.readme_only:
         print("Copying token2wav assets into the full model folder")
         copy_token2wav_assets(base_model, output)
 
     write_model_card(output, base_model=base_model, adapter=adapter, overwrite=args.overwrite_readme)
+    readme = output / "README.md"
+
+    if args.readme_only:
+        print(f"Updating model card at https://huggingface.co/{args.repo_id}")
+        push_readme(readme, args.repo_id, private=args.private)
+        print(f"Updated model card at https://huggingface.co/{args.repo_id}")
+        return
 
     print(f"Pushing {output} to https://huggingface.co/{args.repo_id}")
     push_folder(output, args.repo_id, private=args.private, commit_message=args.commit_message)
