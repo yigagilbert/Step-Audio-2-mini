@@ -117,9 +117,20 @@ def should_load_adapter(adapter_path: str, default_adapter_path: str) -> bool:
     return adapter_path != default_adapter_path
 
 
+def choose_base_model_path(cfg: dict[str, Any], override: str | None) -> str:
+    if override:
+        return override
+    return cfg["model"].get("local_path") or cfg["model"]["name_or_path"]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml")
+    parser.add_argument(
+        "--base-model",
+        default=None,
+        help="Base Step-Audio model path or Hub repo ID; defaults to config local_path/name.",
+    )
     parser.add_argument(
         "--adapter",
         default=None,
@@ -136,7 +147,7 @@ def main() -> None:
     if args.limit:
         rows = rows[: args.limit]
 
-    model_path = cfg["model"].get("local_path") or cfg["model"]["name_or_path"]
+    model_path = choose_base_model_path(cfg, args.base_model)
     tokenizer = load_tokenizer(
         model_path,
         trust_remote_code=cfg["model"].get("trust_remote_code", True),

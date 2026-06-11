@@ -36,7 +36,9 @@ See https://github.com/facebookresearch/SONAR.
 git clone https://github.com/yigagilbert/Step-Audio-2-mini.git
 cd Step-Audio-2-mini
 
+git lfs install
 git clone https://huggingface.co/stepfun-ai/Step-Audio-2-mini
+git -C Step-Audio-2-mini lfs pull
 git clone https://github.com/stepfun-ai/Step-Audio2.git Step-Audio2
 ```
 
@@ -112,7 +114,7 @@ huggingface-cli login
 Set the adapter repo once:
 
 ```bash
-export ADAPTER_REPO_ID="your-org/stepaudio2-mini-luganda-english-s2st-lora"
+export ADAPTER_REPO_ID="yigagilbert/stepaudio2-mini-luganda-english-s2st-lora"
 ```
 
 ## 4. Prepare Only the Validation Split
@@ -149,13 +151,39 @@ ls data/processed/luganda_english_cleaned_v1/validation/wav | head
 Use `--limit 200` for quick apples-to-apples comparison, or omit it for full validation.
 
 ```bash
+mkdir -p outputs/stepaudio2-luganda-lora/eval
+
 python eval.py \
   --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model Step-Audio-2-mini \
   --split validation \
   --adapter "$ADAPTER_REPO_ID" \
   --limit 200 \
   --comet-model Unbabel/wmt22-comet-da \
   | tee outputs/stepaudio2-luganda-lora/eval/stepaudio_metrics_200.txt
+```
+
+If tokenizer loading fails with `expected value at line 1 column 1`, the local
+`Step-Audio-2-mini/` model folder is incomplete or contains Git LFS pointer files. Fix
+it with:
+
+```bash
+git -C Step-Audio-2-mini lfs pull
+head -n 1 Step-Audio-2-mini/tokenizer.json
+```
+
+If the first line starts with `version https://git-lfs.github.com/spec`, LFS still has
+not pulled the real file. You can bypass the local folder and load the base model from
+Hugging Face instead:
+
+```bash
+python eval.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model stepfun-ai/Step-Audio-2-mini \
+  --split validation \
+  --adapter "$ADAPTER_REPO_ID" \
+  --limit 200 \
+  --comet-model Unbabel/wmt22-comet-da
 ```
 
 Then synthesize generated audio for speech metrics:

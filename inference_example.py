@@ -54,10 +54,21 @@ def extract_audio_and_text(tokenizer, formatter, token_ids: list[int]) -> tuple[
     return text, audio_tokens
 
 
+def choose_base_model_path(cfg: dict[str, Any], override: str | None) -> str:
+    if override:
+        return override
+    return cfg["model"].get("local_path") or cfg["model"]["name_or_path"]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--audio", required=True, help="Input Luganda wav/mp3/flac path.")
+    parser.add_argument(
+        "--base-model",
+        default=None,
+        help="Base Step-Audio model path or Hub repo ID; defaults to config local_path/name.",
+    )
     parser.add_argument("--adapter", default=None)
     parser.add_argument("--stepaudio2-repo", default="Step-Audio2")
     parser.add_argument("--prompt-wav", default=None)
@@ -65,8 +76,11 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    model_path = cfg["model"].get("local_path") or cfg["model"]["name_or_path"]
-    tokenizer = load_tokenizer(model_path, trust_remote_code=cfg["model"].get("trust_remote_code", True))
+    model_path = choose_base_model_path(cfg, args.base_model)
+    tokenizer = load_tokenizer(
+        model_path,
+        trust_remote_code=cfg["model"].get("trust_remote_code", True),
+    )
     formatter = StepAudioFormatter(
         tokenizer,
         system_prompt=cfg["format"]["system_prompt"],
@@ -105,7 +119,10 @@ def main() -> None:
     text, audio_tokens = extract_audio_and_text(tokenizer, formatter, new_ids)
     print(text)
     if not audio_tokens:
-        raise RuntimeError("Model returned no audio tokens. Try a larger max_new_tokens or audio_only target_format.")
+        raise RuntimeError(
+            "Model returned no audio tokens. Try a larger max_new_tokens "
+            "or audio_only target_format."
+        )
 
     sys.path.insert(0, str(Path(args.stepaudio2_repo).resolve()))
     patch_torchaudio_bytesio_save()
