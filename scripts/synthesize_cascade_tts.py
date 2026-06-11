@@ -82,9 +82,21 @@ class OrpheusTTS:
         self._snac = None
 
     def load(self) -> None:
-        from snac import SNAC
+        try:
+            from snac import SNAC
+        except ImportError as exc:
+            raise ImportError(
+                "Missing Orpheus codec dependency 'snac'. Install the cascade TTS "
+                "extras with: python -m pip install 'snac>=1.2.1' 'vllm==0.7.3'"
+            ) from exc
+        try:
+            from vllm import LLM
+        except ImportError as exc:
+            raise ImportError(
+                "Missing Orpheus serving dependency 'vllm'. Install the cascade TTS "
+                "extras with: python -m pip install 'snac>=1.2.1' 'vllm==0.7.3'"
+            ) from exc
         from transformers import AutoTokenizer
-        from vllm import LLM
 
         llm_kwargs = {
             "model": self.model_id,
