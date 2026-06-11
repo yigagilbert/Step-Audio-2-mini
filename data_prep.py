@@ -96,6 +96,7 @@ def prepare_split(
     dataset,
     cfg: dict[str, Any],
     target_tokenizer: TargetSpeechTokenizer | None,
+    tokenize_target_audio: bool = True,
 ) -> list[dict[str, Any]]:
     project = cfg["project"]
     dataset_cfg = cfg["dataset"]
@@ -124,7 +125,10 @@ def prepare_split(
             row_id = f"{row_id}_{len(rows)}"
         seen_ids.add(row_id)
         try:
-            src = audio_cell_to_waveform(row["audio_lug"], target_rate=dataset_cfg["audio"]["sample_rate"])
+            src = audio_cell_to_waveform(
+                row["audio_lug"],
+                target_rate=dataset_cfg["audio"]["sample_rate"],
+            )
             if dataset_cfg["vad"].get("enabled", True):
                 src = energy_trim(src, top_db=int(dataset_cfg["vad"].get("top_db", 35)))
             src_mel = log_mel_spectrogram(src, n_mels=128, padding=479)
@@ -133,16 +137,28 @@ def prepare_split(
 
             target_audio_tokens: list[int] = []
             if target_format != "text_only":
-                if target_tokenizer is None:
+                if tokenize_target_audio and target_tokenizer is None:
                     raise RuntimeError("target_format requires target audio tokenization.")
-                tgt = audio_cell_to_waveform(row["audio_eng"], target_rate=dataset_cfg["audio"]["sample_rate"])
+                tgt = audio_cell_to_waveform(
+                    row["audio_eng"],
+                    target_rate=dataset_cfg["audio"]["sample_rate"],
+                )
                 if dataset_cfg["vad"].get("enabled", True):
                     tgt = energy_trim(tgt, top_db=int(dataset_cfg["vad"].get("top_db", 35)))
-                target_audio_tokens = target_tokenizer.encode(tgt)
+                if tokenize_target_audio:
+                    target_audio_tokens = target_tokenizer.encode(tgt)
                 if dataset_cfg["audio"].get("save_resampled_wavs", True):
-                    save_waveform(wav_dir / f"{row_id}.eng.wav", tgt, dataset_cfg["audio"]["sample_rate"])
+                    save_waveform(
+                        wav_dir / f"{row_id}.eng.wav",
+                        tgt,
+                        dataset_cfg["audio"]["sample_rate"],
+                    )
             if dataset_cfg["audio"].get("save_resampled_wavs", True):
-                save_waveform(wav_dir / f"{row_id}.lug.wav", src, dataset_cfg["audio"]["sample_rate"])
+                save_waveform(
+                    wav_dir / f"{row_id}.lug.wav",
+                    src,
+                    dataset_cfg["audio"]["sample_rate"],
+                )
 
             rows.append(
                 {
@@ -172,6 +188,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--splits",
+        default=None,
+        help="Comma-separated output split names to prepare, for example validation.",
+    )
+    parser.add_argument(
+        "--skip-target-tokenization",
+        action="store_true",
+        help="Save target wavs but skip target audio-token extraction; useful for eval-only prep.",
+    )
     args = parser.parse_args()
     cfg = load_config(args.config)
 
@@ -183,18 +209,40 @@ def main() -> None:
 
     target_format = cfg["format"]["target_format"]
     target_tokenizer = None
-    if target_format != "text_only":
-        target_tokenizer = TargetSpeechTokenizer(cfg["model"].get("local_path") or cfg["model"]["name_or_path"], args.device)
+    tokenize_target_audio = not args.skip_target_tokenization
+    if target_format != "text_only" and tokenize_target_audio:
+        target_tokenizer = TargetSpeechTokenizer(
+            cfg["model"].get("local_path") or cfg["model"]["name_or_path"],
+            args.device,
+        )
+
+    selected_splits = None
+    if args.splits:
+        selected_splits = {split.strip() for split in args.splits.split(",") if split.strip()}
 
     for out_split, hf_split in dataset_cfg["splits"].items():
+        if selected_splits is not None and out_split not in selected_splits:
+            continue
         if hf_split not in dataset:
             print(f"[WARN] Dataset split {hf_split!r} not found; skipping {out_split}.")
             continue
-        split = dataset[hf_split].cast_column("audio_lug", Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"]))
+        split = dataset[hf_split].cast_column(
+            "audio_lug",
+            Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"]),
+        )
         if target_format != "text_only":
-            split = split.cast_column("audio_eng", Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"]))
+            split = split.cast_column(
+                "audio_eng",
+                Audio(sampling_rate=dataset_cfg["audio"]["sample_rate"]),
+            )
         validate_schema(split, dataset_cfg["required_columns"])
-        prepare_split(out_split, split, cfg, target_tokenizer)
+        prepare_split(
+            out_split,
+            split,
+            cfg,
+            target_tokenizer,
+            tokenize_target_audio=tokenize_target_audio,
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,212 @@
+# H100 Evaluation Runbook
+
+This runbook sets up a new H100 machine to evaluate:
+
+1. The Hugging Face-hosted Step-Audio LoRA adapter
+2. The ASR + MT + TTS cascade baseline
+
+It prepares only the validation split and computes:
+
+- BLEU
+- chrF
+- WER on the English text channel
+- COMET, optional
+- BLASER 2.0
+- SpeechBERTScore-style WavLM F1
+- MCD
+
+## Metric Notes
+
+- `chrF` is computed with SacreBLEU on generated English text.
+- `BLASER 2.0` is computed through Meta SONAR text embeddings using
+  `blaser_2_0_ref` and `blaser_2_0_qe`.
+- `SpeechBERTScore` is implemented as reference-aware BERTScore over WavLM speech
+  frame embeddings.
+- `MCD` is computed as MFCC + DTW mel-cepstral distortion. Lower is better.
+- Cascade audio metrics require a TTS stage. This runbook uses `microsoft/speecht5_tts`
+  so the cascade is `ASR -> MT -> TTS`.
+
+BLASER/SONAR setup follows the official SONAR package guidance:
+`sonar-space` requires a matching `fairseq2` wheel for the installed PyTorch/CUDA build.
+See https://github.com/facebookresearch/SONAR.
+
+## 1. Clone Repos
+
+```bash
+git clone https://github.com/yigagilbert/Step-Audio-2-mini.git
+cd Step-Audio-2-mini
+
+git clone https://huggingface.co/stepfun-ai/Step-Audio-2-mini
+git clone https://github.com/stepfun-ai/Step-Audio2.git Step-Audio2
+```
+
+## 2. Create the `.venv`
+
+```bash
+./scripts/setup_h100_eval_env.sh
+source .venv/bin/activate
+```
+
+If `fairseq2` fails to install, check the PyTorch/CUDA version:
+
+```bash
+python - <<'PY'
+import torch
+print(torch.__version__)
+print(torch.version.cuda)
+PY
+```
+
+Then install the matching wheel from the `fairseq2` package index documented by SONAR.
+
+## 3. Log In to Hugging Face
+
+Required if the adapter or dataset is private/gated.
+
+```bash
+huggingface-cli login
+```
+
+Set the adapter repo once:
+
+```bash
+export ADAPTER_REPO_ID="your-org/stepaudio2-mini-luganda-english-s2st-lora"
+```
+
+## 4. Prepare Only the Validation Split
+
+This saves:
+
+- `validation.jsonl`
+- source Luganda mels for Step-Audio eval
+- source Luganda wavs for cascade ASR
+- reference English wavs for MCD/SpeechBERTScore
+
+It skips target audio tokenization because we are not training.
+
+```bash
+python data_prep.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --device cuda \
+  --splits validation \
+  --skip-target-tokenization
+```
+
+Sanity check:
+
+```bash
+wc -l data/processed/luganda_english_cleaned_v1/validation.jsonl
+ls data/processed/luganda_english_cleaned_v1/validation/wav | head
+```
+
+## 5. Evaluate the Fine-Tuned Step-Audio Adapter
+
+Use `--limit 200` for quick apples-to-apples comparison, or omit it for full validation.
+
+```bash
+python eval.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --split validation \
+  --adapter "$ADAPTER_REPO_ID" \
+  --limit 200 \
+  --comet-model Unbabel/wmt22-comet-da \
+  | tee outputs/stepaudio2-luganda-lora/eval/stepaudio_metrics_200.txt
+```
+
+Then synthesize generated audio for speech metrics:
+
+```bash
+python scripts/synthesize_eval_audio.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --split validation \
+  --predictions outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl \
+  --stepaudio2-repo Step-Audio2 \
+  --output-dir outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples \
+  --limit 200
+```
+
+For full validation, omit `--limit`.
+
+## 6. Evaluate the Cascade Text Pipeline
+
+```bash
+python eval_cascade.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --split validation \
+  --limit 200 \
+  --comet-model Unbabel/wmt22-comet-da \
+  | tee outputs/stepaudio2-luganda-lora/eval/cascade_metrics_200.txt
+```
+
+Then synthesize cascade English text into English speech for speech metrics:
+
+```bash
+python scripts/synthesize_cascade_tts.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --split validation \
+  --predictions outputs/stepaudio2-luganda-lora/eval/cascade_validation_predictions.jsonl \
+  --output-dir outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples \
+  --limit 200
+```
+
+For full validation, omit `--limit`.
+
+## 7. Run Advanced Metrics
+
+```bash
+python eval_advanced_metrics.py \
+  --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
+  --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
+  --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200.json
+```
+
+This computes all advanced metrics by default. To skip expensive metrics:
+
+```bash
+python eval_advanced_metrics.py \
+  --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
+  --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
+  --skip-blaser \
+  --skip-speechbertscore \
+  --output outputs/stepaudio2-luganda-lora/eval/quick_audio_metrics_200.json
+```
+
+## 8. Expected Output Files
+
+Step-Audio:
+
+```text
+outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl
+outputs/stepaudio2-luganda-lora/eval/validation_metrics.json
+outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl
+```
+
+Cascade:
+
+```text
+outputs/stepaudio2-luganda-lora/eval/cascade_validation_predictions.jsonl
+outputs/stepaudio2-luganda-lora/eval/cascade_validation_metrics.json
+outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl
+```
+
+Comparison:
+
+```text
+outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200.json
+```
+
+## Interpretation
+
+Text metrics:
+
+- Higher BLEU, chrF, COMET, and BLASER are better.
+- Lower WER is better.
+
+Speech metrics:
+
+- Higher SpeechBERTScore F1 is better.
+- Lower MCD is better.
+
+MCD is sensitive to speaker, duration, and prosody. Since the cascade uses SpeechT5 and
+the fine-tuned model uses Step-Audio token2wav, MCD should be treated as an audio
+similarity diagnostic rather than a pure translation-quality score.

@@ -33,7 +33,10 @@ def clean_prediction_text(text: str) -> str:
     return text.splitlines()[0].strip()
 
 
-def extract_outputs(token_ids: list[int], formatter: StepAudioFormatter) -> tuple[list[int], list[int]]:
+def extract_outputs(
+    token_ids: list[int],
+    formatter: StepAudioFormatter,
+) -> tuple[list[int], list[int]]:
     text_ids: list[int] = []
     audio_tokens: list[int] = []
     seen_audio = False
@@ -88,7 +91,12 @@ def generate_one(model, tokenizer, formatter, row, cfg, device: torch.device) ->
     }
 
 
-def maybe_comet(predictions: list[str], references: list[str], sources: list[str], model_name: str | None):
+def maybe_comet(
+    predictions: list[str],
+    references: list[str],
+    sources: list[str],
+    model_name: str | None,
+):
     if not model_name:
         return None
     try:
@@ -99,13 +107,24 @@ def maybe_comet(predictions: list[str], references: list[str], sources: list[str
     checkpoint = download_model(model_name)
     model = load_from_checkpoint(checkpoint)
     data = [{"src": s, "mt": p, "ref": r} for s, p, r in zip(sources, predictions, references)]
-    return float(model.predict(data, batch_size=8, gpus=1 if torch.cuda.is_available() else 0).system_score)
+    comet_output = model.predict(data, batch_size=8, gpus=1 if torch.cuda.is_available() else 0)
+    return float(comet_output.system_score)
+
+
+def should_load_adapter(adapter_path: str, default_adapter_path: str) -> bool:
+    if Path(adapter_path).exists():
+        return True
+    return adapter_path != default_adapter_path
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yaml")
-    parser.add_argument("--adapter", default=None, help="LoRA adapter path; defaults to output_dir/final.")
+    parser.add_argument(
+        "--adapter",
+        default=None,
+        help="LoRA adapter path or Hub repo ID; defaults to output_dir/final.",
+    )
     parser.add_argument("--split", default="validation")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--comet-model", default=None)
@@ -118,7 +137,10 @@ def main() -> None:
         rows = rows[: args.limit]
 
     model_path = cfg["model"].get("local_path") or cfg["model"]["name_or_path"]
-    tokenizer = load_tokenizer(model_path, trust_remote_code=cfg["model"].get("trust_remote_code", True))
+    tokenizer = load_tokenizer(
+        model_path,
+        trust_remote_code=cfg["model"].get("trust_remote_code", True),
+    )
     formatter = StepAudioFormatter(
         tokenizer,
         system_prompt=cfg["format"]["system_prompt"],
@@ -126,8 +148,9 @@ def main() -> None:
         max_target_audio_tokens=cfg["format"].get("max_target_audio_tokens"),
     )
     model = load_model(model_path, cfg["model"])
-    adapter_path = args.adapter or str(Path(cfg["project"]["output_dir"]) / "final")
-    if Path(adapter_path).exists():
+    default_adapter_path = str(Path(cfg["project"]["output_dir"]) / "final")
+    adapter_path = args.adapter or default_adapter_path
+    if should_load_adapter(adapter_path, default_adapter_path):
         model = PeftModel.from_pretrained(model, adapter_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device).eval()
@@ -141,6 +164,7 @@ def main() -> None:
     srcs = [row.get("text_lug", "") for row in rows]
     metrics = {
         "bleu": sacrebleu.corpus_bleu(preds, [refs]).score if preds else 0.0,
+        "chrf": sacrebleu.corpus_chrf(preds, [refs]).score if preds else 0.0,
         "wer_on_text_channel": wer(refs, preds) if preds else 1.0,
         "count": len(outputs),
     }

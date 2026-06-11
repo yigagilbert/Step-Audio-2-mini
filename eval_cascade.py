@@ -182,6 +182,7 @@ def compute_metrics(
 ) -> dict[str, Any]:
     metrics: dict[str, Any] = {
         "bleu": sacrebleu.corpus_bleu(predictions, [references]).score if predictions else 0.0,
+        "chrf": sacrebleu.corpus_chrf(predictions, [references]).score if predictions else 0.0,
         "wer_on_text_channel": wer(references, predictions) if predictions else 1.0,
         "count": len(predictions),
     }

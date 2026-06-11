@@ -1,0 +1,11 @@
+# Core project requirements.
+-r requirements.txt
+
+# Evaluation extras.
+scipy>=1.11.0
+unbabel-comet>=2.2.0
+onnxruntime-gpu>=1.18.0
+
+# BLASER 2.0 via SONAR. Install fairseq2 first with the setup script because
+# fairseq2 wheels are CUDA/PyTorch-version specific.
+sonar-space~=0.5.0

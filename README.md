@@ -392,6 +392,31 @@ uv run python inference_example.py \
   --output outputs/luganda_to_english.wav
 ```
 
+For a Hugging Face-hosted LoRA adapter, translate one Luganda audio file and save both
+English text and synthesized English speech:
+
+```bash
+uv run python translate_hf_audio.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --adapter your-org/stepaudio2-mini-luganda-english-s2st-lora \
+  --audio path/to/luganda.wav \
+  --stepaudio2-repo Step-Audio2 \
+  --output-text outputs/single_translation.txt \
+  --output-audio outputs/single_translation.wav \
+  --output-json outputs/single_translation.json
+```
+
+If the adapter repo is private, run `huggingface-cli login` first. The script uses the
+base model from the config by default, loads the Hub adapter through PEFT, prints the
+English text, and writes metadata containing the adapter, prompt wav, and audio-token
+count.
+
+For users who do not have this codebase, see `COLAB_INFERENCE.md` for a standalone
+Google Colab walkthrough.
+
+For a fresh H100 validation-only evaluation setup with chrF, BLASER 2.0,
+SpeechBERTScore-style WavLM F1, and MCD, see `H100_EVAL_RUNBOOK.md`.
+
 For low-latency service, merge the adapter and serve with the official Step-Audio 2 vLLM
 Docker image after validating that your vLLM build supports the merged custom model:
 
