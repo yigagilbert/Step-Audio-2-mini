@@ -54,18 +54,16 @@ By default the setup script installs `torch==2.5.1` and `torchaudio==2.5.1` from
 CUDA 12.1 PyTorch wheel index. This avoids accidentally installing PyPI wheels that
 expect CUDA 13 runtime libraries such as `libcudart.so.13`.
 
-If you are reusing an existing `.venv` created before the Orpheus cascade TTS
-step was added, install the missing TTS extras in the active environment:
+If you are reusing an existing `.venv`, repair and check all H100 evaluation
+extras in the active environment:
 
 ```bash
-python -m pip install "snac>=1.2.1" "vllm==0.7.3"
-
-python - <<'PY'
-import snac
-import vllm
-print("snac and vllm imports OK")
-PY
+source .venv/bin/activate
+scripts/install_h100_eval_extras.sh
+python scripts/check_h100_eval_env.py --profile all
 ```
+
+For the current cascade TTS stage only, `--profile cascade-tts` is enough.
 
 To choose another supported CUDA 12 wheel index:
 
