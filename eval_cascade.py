@@ -95,9 +95,28 @@ def build_asr_pipeline(asr_model: str, device: torch.device, pipeline_device: in
     )
 
 
+def load_asr_audio(path: Path, sampling_rate: int):
+    import torchaudio
+
+    waveform, original_sampling_rate = torchaudio.load(str(path))
+    if waveform.numel() == 0:
+        raise ValueError(f"Audio file is empty: {path}")
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    if original_sampling_rate != sampling_rate:
+        waveform = torchaudio.functional.resample(
+            waveform,
+            orig_freq=original_sampling_rate,
+            new_freq=sampling_rate,
+        )
+    return waveform.squeeze(0).cpu().numpy()
+
+
 def transcribe_batch(asr, wav_paths: list[Path], batch_size: int) -> list[str]:
+    sampling_rate = getattr(asr.feature_extractor, "sampling_rate", 16000)
+    audio_inputs = [load_asr_audio(path, sampling_rate) for path in wav_paths]
     outputs = asr(
-        [str(path) for path in wav_paths],
+        audio_inputs,
         batch_size=batch_size,
         return_timestamps=False,
     )

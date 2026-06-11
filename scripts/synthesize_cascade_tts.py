@@ -257,6 +257,12 @@ def main() -> None:
     sample_dir = Path(args.output_dir or output_dir / "eval" / "cascade_audio_samples")
     sample_dir.mkdir(parents=True, exist_ok=True)
 
+    if not predictions_path.exists():
+        raise FileNotFoundError(
+            f"Missing cascade predictions file: {predictions_path}. "
+            "Run eval_cascade.py successfully before synthesizing cascade audio."
+        )
+
     prepared_rows = {row["id"]: row for row in read_jsonl(processed_dir / f"{args.split}.jsonl")}
     predictions = read_jsonl(predictions_path)
     if args.limit is not None:
