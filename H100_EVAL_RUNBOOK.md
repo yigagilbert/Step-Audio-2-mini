@@ -278,6 +278,7 @@ For full validation, omit `--limit`.
 python eval_advanced_metrics.py \
   --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
   --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
+  --align-ids \
   --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200.json
 ```
 
@@ -287,6 +288,7 @@ This computes all advanced metrics by default. To skip expensive metrics:
 python eval_advanced_metrics.py \
   --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
   --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
+  --align-ids \
   --skip-blaser \
   --skip-speechbertscore \
   --output outputs/stepaudio2-luganda-lora/eval/quick_audio_metrics_200.json

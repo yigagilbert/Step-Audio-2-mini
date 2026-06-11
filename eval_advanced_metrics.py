@@ -57,6 +57,27 @@ def get_path(record: dict[str, Any], *keys: str) -> Path | None:
     return None
 
 
+def filter_to_common_ids(
+    systems: dict[str, list[dict[str, Any]]],
+) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
+    id_sets = []
+    for name, records in systems.items():
+        ids = {str(record.get("id")) for record in records if record.get("id") is not None}
+        if not ids:
+            raise ValueError(f"System {name!r} has no records with an 'id' field.")
+        id_sets.append(ids)
+    common_ids = set.intersection(*id_sets) if id_sets else set()
+    if not common_ids:
+        raise ValueError("No common record IDs found across systems.")
+
+    filtered = {}
+    for name, records in systems.items():
+        filtered[name] = [
+            record for record in records if str(record.get("id")) in common_ids
+        ]
+    return filtered, sorted(common_ids)
+
+
 def load_audio(path: Path, target_rate: int = 16000) -> torch.Tensor:
     waveform, sample_rate = torchaudio.load(str(path))
     waveform = waveform.to(torch.float32)
@@ -252,16 +273,27 @@ def main() -> None:
     parser.add_argument("--skip-speechbertscore", action="store_true")
     parser.add_argument("--skip-mcd", action="store_true")
     parser.add_argument("--speech-model", default="microsoft/wavlm-large")
+    parser.add_argument(
+        "--align-ids",
+        action="store_true",
+        help="Evaluate only record IDs present in every system manifest.",
+    )
     args = parser.parse_args()
 
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    systems = {name: read_records(path) for name, path in args.system}
+    aligned_ids = None
+    if args.align_ids:
+        systems, aligned_ids = filter_to_common_ids(systems)
+
     results: dict[str, Any] = {}
-    for name, path in args.system:
-        records = read_records(path)
+    for name, records in systems.items():
         metrics: dict[str, Any] = {
             "count": len(records),
             "chrf": compute_chrf(records),
         }
+        if aligned_ids is not None:
+            metrics["aligned_id_count"] = len(aligned_ids)
         if not args.skip_blaser:
             metrics.update(compute_blaser(records, args.src_lang, args.mt_lang, device))
         if not args.skip_speechbertscore:
