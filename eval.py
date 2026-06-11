@@ -136,9 +136,16 @@ def main() -> None:
         default=None,
         help="LoRA adapter path or Hub repo ID; defaults to output_dir/final.",
     )
+    parser.add_argument(
+        "--no-adapter",
+        action="store_true",
+        help="Evaluate the base model without loading a LoRA adapter.",
+    )
     parser.add_argument("--split", default="validation")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--comet-model", default=None)
+    parser.add_argument("--output-jsonl", default=None)
+    parser.add_argument("--metrics-path", default=None)
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -161,8 +168,14 @@ def main() -> None:
     model = load_model(model_path, cfg["model"])
     default_adapter_path = str(Path(cfg["project"]["output_dir"]) / "final")
     adapter_path = args.adapter or default_adapter_path
-    if should_load_adapter(adapter_path, default_adapter_path):
+    adapter_loaded = False
+    if args.no_adapter:
+        adapter_path = None
+        print("Evaluating base model without a LoRA adapter.")
+    elif should_load_adapter(adapter_path, default_adapter_path):
+        print(f"Loading LoRA adapter: {adapter_path}")
         model = PeftModel.from_pretrained(model, adapter_path)
+        adapter_loaded = True
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device).eval()
 
@@ -178,6 +191,9 @@ def main() -> None:
         "chrf": sacrebleu.corpus_chrf(preds, [refs]).score if preds else 0.0,
         "wer_on_text_channel": wer(refs, preds) if preds else 1.0,
         "count": len(outputs),
+        "base_model": model_path,
+        "adapter": adapter_path,
+        "adapter_loaded": adapter_loaded,
     }
     comet_score = maybe_comet(preds, refs, srcs, args.comet_model)
     if comet_score is not None:
@@ -185,12 +201,18 @@ def main() -> None:
 
     out_dir = Path(cfg["project"]["output_dir"]) / "eval"
     out_dir.mkdir(parents=True, exist_ok=True)
-    with (out_dir / f"{args.split}_predictions.jsonl").open("w", encoding="utf-8") as f:
+    predictions_path = Path(args.output_jsonl or out_dir / f"{args.split}_predictions.jsonl")
+    metrics_path = Path(args.metrics_path or out_dir / f"{args.split}_metrics.json")
+    predictions_path.parent.mkdir(parents=True, exist_ok=True)
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
+    with predictions_path.open("w", encoding="utf-8") as f:
         for row in outputs:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    with (out_dir / f"{args.split}_metrics.json").open("w", encoding="utf-8") as f:
+    with metrics_path.open("w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)
     print(json.dumps(metrics, indent=2))
+    print(f"Wrote predictions to {predictions_path}")
+    print(f"Wrote metrics to {metrics_path}")
 
 
 if __name__ == "__main__":

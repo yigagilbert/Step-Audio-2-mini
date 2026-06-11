@@ -213,6 +213,37 @@ python scripts/synthesize_eval_audio.py \
 
 For full validation, omit `--limit`.
 
+### Optional Base Model Evaluation
+
+Run the unfine-tuned base model on the same validation rows and write separate
+outputs so the fine-tuned adapter files are not overwritten:
+
+```bash
+python eval.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model stepfun-ai/Step-Audio-2-mini \
+  --split validation \
+  --no-adapter \
+  --limit 200 \
+  --comet-model Unbabel/wmt22-comet-da \
+  --output-jsonl outputs/stepaudio2-luganda-lora/eval/base_validation_predictions.jsonl \
+  --metrics-path outputs/stepaudio2-luganda-lora/eval/base_validation_metrics.json \
+  | tee outputs/stepaudio2-luganda-lora/eval/base_metrics_200.txt
+```
+
+Then synthesize base-model audio:
+
+```bash
+python scripts/synthesize_eval_audio.py \
+  --config configs/h100_nvl_fast_deepspeed.yaml \
+  --base-model stepfun-ai/Step-Audio-2-mini \
+  --split validation \
+  --predictions outputs/stepaudio2-luganda-lora/eval/base_validation_predictions.jsonl \
+  --stepaudio2-repo Step-Audio2 \
+  --output-dir outputs/stepaudio2-luganda-lora/eval/base_audio_samples \
+  --limit 200
+```
+
 If synthesis fails with `google.protobuf.message.DecodeError: Error parsing message`
 while loading `speech_tokenizer_v2_25hz.onnx`, the local ONNX file is probably a Git
 LFS pointer or incomplete download. Check it:
@@ -280,11 +311,12 @@ PyTorch/CUDA build.
 
 ```bash
 python eval_advanced_metrics.py \
+  --system base=outputs/stepaudio2-luganda-lora/eval/base_audio_samples/manifest.jsonl \
   --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
   --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
   --align-ids \
   --skip-blaser \
-  --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200_no_blaser.json
+  --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200_with_base_no_blaser.json
 ```
 
 For a faster smoke test, also add `--skip-speechbertscore`.
@@ -302,12 +334,13 @@ RECREATE=1 scripts/setup_blaser_env.sh
 source .venv-blaser/bin/activate
 
 python eval_advanced_metrics.py \
+  --system base=outputs/stepaudio2-luganda-lora/eval/base_audio_samples/manifest.jsonl \
   --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
   --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
   --align-ids \
   --skip-speechbertscore \
   --skip-mcd \
-  --output outputs/stepaudio2-luganda-lora/eval/blaser_metrics_200_aligned.json
+  --output outputs/stepaudio2-luganda-lora/eval/blaser_metrics_200_with_base_aligned.json
 ```
 
 ## 8. Expected Output Files
@@ -318,6 +351,9 @@ Step-Audio:
 outputs/stepaudio2-luganda-lora/eval/validation_predictions.jsonl
 outputs/stepaudio2-luganda-lora/eval/validation_metrics.json
 outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl
+outputs/stepaudio2-luganda-lora/eval/base_validation_predictions.jsonl
+outputs/stepaudio2-luganda-lora/eval/base_validation_metrics.json
+outputs/stepaudio2-luganda-lora/eval/base_audio_samples/manifest.jsonl
 ```
 
 Cascade:
