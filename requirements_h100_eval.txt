@@ -12,6 +12,7 @@ onnxruntime-gpu>=1.18.0
 vllm==0.7.3
 snac>=1.2.1
 
-# BLASER 2.0 via SONAR. Install fairseq2 first with the setup script because
-# fairseq2 wheels are CUDA/PyTorch-version specific.
-sonar-space~=0.5.0
+# BLASER 2.0 via SONAR is intentionally not installed by default. fairseq2
+# wheels must exactly match the installed PyTorch/CUDA build; the Torch 2.5.x
+# environment used for Step-Audio/Orpheus does not have a current matching
+# fairseq2 CUDA 12.4 wheel. Use --skip-blaser here, or run BLASER separately.

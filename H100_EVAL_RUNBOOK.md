@@ -60,7 +60,7 @@ extras in the active environment:
 ```bash
 source .venv/bin/activate
 scripts/install_h100_eval_extras.sh
-python scripts/check_h100_eval_env.py --profile all
+python scripts/check_h100_eval_env.py --profile eval
 ```
 
 For the current cascade TTS stage only, `--profile cascade-tts` is enough.
@@ -274,15 +274,9 @@ For full validation, omit `--limit`.
 
 ## 7. Run Advanced Metrics
 
-```bash
-python eval_advanced_metrics.py \
-  --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
-  --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
-  --align-ids \
-  --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200.json
-```
-
-This computes all advanced metrics by default. To skip expensive metrics:
+The recommended first pass skips BLASER and computes chrF, SpeechBERTScore, and MCD.
+BLASER depends on `fairseq2`, whose binary wheels must exactly match the installed
+PyTorch/CUDA build.
 
 ```bash
 python eval_advanced_metrics.py \
@@ -290,9 +284,10 @@ python eval_advanced_metrics.py \
   --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
   --align-ids \
   --skip-blaser \
-  --skip-speechbertscore \
-  --output outputs/stepaudio2-luganda-lora/eval/quick_audio_metrics_200.json
+  --output outputs/stepaudio2-luganda-lora/eval/advanced_metrics_200_no_blaser.json
 ```
+
+For a faster smoke test, also add `--skip-speechbertscore`.
 
 ## 8. Expected Output Files
 

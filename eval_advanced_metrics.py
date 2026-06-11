@@ -13,7 +13,7 @@ import torch
 import torchaudio
 from scipy.spatial.distance import cdist
 from tqdm import tqdm
-from transformers import AutoModel, AutoProcessor
+from transformers import AutoFeatureExtractor, AutoModel
 
 
 def read_records(path: str | Path) -> list[dict[str, Any]]:
@@ -147,13 +147,13 @@ def compute_mcd(records: list[dict[str, Any]]) -> dict[str, Any]:
 class SpeechBERTScorer:
     def __init__(self, model_name: str, device: torch.device) -> None:
         self.device = device
-        self.processor = AutoProcessor.from_pretrained(model_name)
+        self.feature_extractor = AutoFeatureExtractor.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name).to(device).eval()
 
     @torch.inference_mode()
     def embed(self, audio_path: Path) -> torch.Tensor:
         waveform = load_audio(audio_path, target_rate=16000)
-        inputs = self.processor(
+        inputs = self.feature_extractor(
             waveform.cpu().numpy(),
             sampling_rate=16000,
             return_tensors="pt",
