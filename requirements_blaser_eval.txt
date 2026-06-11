@@ -1,0 +1,12 @@
+# Minimal packages for BLASER-only scoring in a separate .venv-blaser.
+# Install torch, torchaudio, and fairseq2 with scripts/setup_blaser_env.sh first.
+librosa>=0.10.2.post1
+numpy>=1.26.4
+PyYAML>=6.0.2
+sacrebleu>=2.4.3
+scipy>=1.11.0
+sonar-space~=0.5.0
+soundfile>=0.12.1
+tqdm>=4.66.5
+transformers==4.49.0
+

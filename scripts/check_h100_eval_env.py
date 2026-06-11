@@ -166,10 +166,14 @@ def main() -> None:
             print("Install missing packages:")
             quoted = [shlex.quote(name) for name in payload["missing_pip_names"]]
             print("python -m pip install " + " ".join(quoted))
-            if any(check.module == "fairseq2" for check in missing):
+            if args.profile == "blaser" and any(check.module == "fairseq2" for check in missing):
                 print()
-                print("For fairseq2, prefer scripts/install_h100_eval_extras.sh")
-                print("because fairseq2 wheels depend on your torch/CUDA build.")
+                print("For BLASER, prefer scripts/setup_blaser_env.sh")
+                print("so fairseq2 is installed against a matching torch/CUDA build.")
+            elif any(check.module == "fairseq2" for check in missing):
+                print()
+                print("For fairseq2, use a dedicated BLASER environment.")
+                print("Run scripts/setup_blaser_env.sh instead of changing the main .venv.")
         else:
             print()
             print("All requested imports are available.")

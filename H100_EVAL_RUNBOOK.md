@@ -289,6 +289,26 @@ python eval_advanced_metrics.py \
 
 For a faster smoke test, also add `--skip-speechbertscore`.
 
+### Optional BLASER Pass
+
+Run BLASER in a separate environment so the main Step-Audio/Orpheus `.venv` stays
+on its known-good Torch build. The fairseq2 Linux wheel matrix currently includes
+a CUDA 12.4 build for PyTorch 2.6.0, so the helper uses that combination.
+
+```bash
+deactivate 2>/dev/null || true
+scripts/setup_blaser_env.sh
+source .venv-blaser/bin/activate
+
+python eval_advanced_metrics.py \
+  --system stepaudio=outputs/stepaudio2-luganda-lora/eval/stepaudio_audio_samples/manifest.jsonl \
+  --system cascade=outputs/stepaudio2-luganda-lora/eval/cascade_audio_samples/manifest.jsonl \
+  --align-ids \
+  --skip-speechbertscore \
+  --skip-mcd \
+  --output outputs/stepaudio2-luganda-lora/eval/blaser_metrics_200_aligned.json
+```
+
 ## 8. Expected Output Files
 
 Step-Audio:
