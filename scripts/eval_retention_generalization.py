@@ -399,6 +399,27 @@ def compute_metrics(
     return metrics
 
 
+def compute_reference_overlap(
+    rows: list[dict[str, Any]],
+    text_field: str,
+    metric_prefix: str,
+) -> dict[str, Any]:
+    """Diagnostic overlap against English references, even for non-English target prompts."""
+    predictions = [str(row.get(text_field, "") or "") for row in rows]
+    references = [str(row.get("reference", "") or "") for row in rows]
+    nonempty_pairs = [(p, r) for p, r in zip(predictions, references) if r.strip()]
+    if nonempty_pairs:
+        preds, refs = map(list, zip(*nonempty_pairs))
+    else:
+        preds, refs = [], []
+    return {
+        f"{metric_prefix}_count": len(preds),
+        f"{metric_prefix}_bleu": sacrebleu.corpus_bleu(preds, [refs]).score if preds else None,
+        f"{metric_prefix}_chrf": sacrebleu.corpus_chrf(preds, [refs]).score if preds else None,
+        f"{metric_prefix}_wer": wer(refs, preds) if preds else None,
+    }
+
+
 def summarize_group(
     group_rows: list[dict[str, Any]],
     args: argparse.Namespace,
@@ -618,7 +639,7 @@ def main() -> None:
         "conditions": conditions,
         "limit": args.limit,
         "base_model": model_path,
-        "adapter": resolve_adapter_path(cfg, args.adapter),
+        "adapter_path": resolve_adapter_path(cfg, args.adapter),
     }
     for condition in conditions:
         group_rows = [row for row in all_outputs if row["condition"] == condition]
@@ -627,6 +648,14 @@ def main() -> None:
         if args.suite == "preservation" or args.target_language.strip().lower() == "english":
             metrics[prefix].update(
                 compute_metrics(group_rows, "prediction", "direct", args.comet_model)
+            )
+        elif args.suite == "composition":
+            metrics[prefix].update(
+                compute_reference_overlap(
+                    group_rows,
+                    "prediction",
+                    "direct_vs_english_reference_diagnostic",
+                )
             )
         if args.backtranslate:
             metrics[prefix].update(
