@@ -195,6 +195,18 @@ def configure_reporting_environment(train_cfg: dict[str, Any]) -> None:
         )
 
 
+def configure_single_process_distributed_environment(train_cfg: dict[str, Any]) -> None:
+    if not train_cfg.get("deepspeed"):
+        return
+    if int(os.environ.get("WORLD_SIZE", "1")) != 1:
+        return
+    os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
+    os.environ.setdefault("MASTER_PORT", "29500")
+    os.environ.setdefault("RANK", "0")
+    os.environ.setdefault("LOCAL_RANK", "0")
+    os.environ.setdefault("WORLD_SIZE", "1")
+
+
 def resolve_deepspeed_config(train_cfg: dict[str, Any], output_dir: Path) -> str | None:
     source = train_cfg.get("deepspeed")
     if not source:
@@ -234,6 +246,7 @@ def main() -> None:
 
     cfg = load_config(args.config)
     configure_reporting_environment(cfg["training"])
+    configure_single_process_distributed_environment(cfg["training"])
     seed_everything(int(cfg["project"].get("seed", 42)))
     if cfg["training"].get("tf32", True):
         torch.backends.cuda.matmul.allow_tf32 = True

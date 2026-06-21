@@ -8,6 +8,12 @@ LOG_DIR="${LOG_DIR:-logs}"
 
 mkdir -p "$LOG_DIR"
 
+export MASTER_ADDR="${MASTER_ADDR:-127.0.0.1}"
+export MASTER_PORT="${MASTER_PORT:-29500}"
+export RANK="${RANK:-0}"
+export LOCAL_RANK="${LOCAL_RANK:-0}"
+export WORLD_SIZE="${WORLD_SIZE:-1}"
+
 for rank in $RANKS; do
   config="configs/ablation_lora_r${rank}_8k.yaml"
   output_dir="outputs/ablation/lora-r${rank}-8k"
