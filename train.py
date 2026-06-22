@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
 import sys
@@ -41,6 +42,9 @@ def seed_everything(seed: int) -> None:
 
 class StepAudioTrainer(Trainer):
     optimizer_debug: bool = False
+    loss_guard_enabled: bool = True
+    loss_guard_min: float = 1e-8
+    loss_guard_max: float = 1000.0
     _logged_runtime_optimizer_state: bool = False
 
     @staticmethod
@@ -154,6 +158,20 @@ class StepAudioTrainer(Trainer):
             shift_labels.view(-1),
             ignore_index=-100,
         )
+        if self.loss_guard_enabled:
+            loss_value = float(loss.detach().float().cpu())
+            if (
+                not math.isfinite(loss_value)
+                or loss_value <= self.loss_guard_min
+                or loss_value >= self.loss_guard_max
+            ):
+                valid_labels = int((shift_labels != -100).sum().detach().cpu())
+                raise FloatingPointError(
+                    "Unhealthy training loss detected: "
+                    f"loss={loss_value} valid_labels={valid_labels} "
+                    f"global_step={getattr(self.state, 'global_step', None)}. "
+                    "Stop this run and lower the learning rate/increase warmup before rerunning."
+                )
         return (loss, outputs) if return_outputs else loss
 
 
@@ -331,6 +349,9 @@ def main() -> None:
         tokenizer=tokenizer,
     )
     trainer.optimizer_debug = bool(train_cfg.get("debug_optimizer_state", True))
+    trainer.loss_guard_enabled = bool(train_cfg.get("loss_guard_enabled", True))
+    trainer.loss_guard_min = float(train_cfg.get("loss_guard_min", 1e-8))
+    trainer.loss_guard_max = float(train_cfg.get("loss_guard_max", 1000.0))
     trainer.train(resume_from_checkpoint=args.resume_from_checkpoint)
     trainer.save_model(str(output_dir / "final"))
     tokenizer.save_pretrained(str(output_dir / "final"))

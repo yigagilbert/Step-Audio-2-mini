@@ -80,21 +80,24 @@ training:
   gradient_accumulation_steps: 8
   num_train_epochs: 2
   max_steps: 8000
-  learning_rate: 0.0001
-  warmup_ratio: 0.03
+  learning_rate: 0.00005
+  warmup_ratio: 0.1
   weight_decay: 0.01
   lr_scheduler_type: cosine
   logging_steps: 10
   eval_steps: 1000
   save_steps: 1000
   save_total_limit: 3
-  max_grad_norm: 1.0
+  max_grad_norm: 0.5
   bf16: true
   tf32: true
   dataloader_num_workers: 4
   report_to: wandb
   wandb_log_model: false
   debug_optimizer_state: false
+  loss_guard_enabled: true
+  loss_guard_min: 0.00000001
+  loss_guard_max: 1000.0
   push_to_hub: false
   hub_model_id:
 

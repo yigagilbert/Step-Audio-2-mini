@@ -27,6 +27,12 @@ for rank in $RANKS; do
     exit 1
   fi
 
+  if [[ -d "$output_dir" && ! -d "$checkpoint" && "${ALLOW_PARTIAL_OUTPUT_DIR:-0}" != "1" ]]; then
+    echo "Found partial output directory: $output_dir" >&2
+    echo "Move it aside before rerunning, or set ALLOW_PARTIAL_OUTPUT_DIR=1 if you know this is safe." >&2
+    exit 1
+  fi
+
   echo "=== LoRA rank ${rank}: training with ${config} ==="
   if [[ -d "$checkpoint" && "${FORCE_TRAIN:-0}" != "1" ]]; then
     echo "Found ${checkpoint}; skipping training. Set FORCE_TRAIN=1 to rerun."
