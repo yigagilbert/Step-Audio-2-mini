@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,13 @@ def clean_prediction_text(text: str) -> str:
     if not text:
         return text
     return text.splitlines()[0].strip()
+
+
+def normalize_text(text: str) -> str:
+    text = clean_prediction_text(text).lower()
+    text = re.sub(r"[^\w\s']", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
 def extract_outputs(
@@ -195,6 +203,26 @@ def main() -> None:
         "adapter": adapter_path,
         "adapter_loaded": adapter_loaded,
     }
+    norm_preds = [normalize_text(text) for text in preds]
+    norm_refs = [normalize_text(text) for text in refs]
+    metrics.update(
+        {
+            "normalized_bleu": (
+                sacrebleu.corpus_bleu(norm_preds, [norm_refs]).score if norm_preds else 0.0
+            ),
+            "normalized_chrf": (
+                sacrebleu.corpus_chrf(norm_preds, [norm_refs]).score if norm_preds else 0.0
+            ),
+            "normalized_wer_on_text_channel": (
+                wer(norm_refs, norm_preds) if norm_preds else 1.0
+            ),
+            "empty_prediction_rate": (
+                sum(1 for prediction in preds if not prediction.strip()) / len(preds)
+                if preds
+                else 1.0
+            ),
+        }
+    )
     comet_score = maybe_comet(preds, refs, srcs, args.comet_model)
     if comet_score is not None:
         metrics["comet"] = comet_score

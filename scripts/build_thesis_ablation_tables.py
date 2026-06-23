@@ -1,0 +1,318 @@
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+
+TEXT_COLUMNS = [
+    "system",
+    "rank",
+    "checkpoint",
+    "trainable_params",
+    "trainable_percent",
+    "best_metric_used",
+    "bleu",
+    "chrf",
+    "wer_on_text_channel",
+    "normalized_bleu",
+    "normalized_chrf",
+    "normalized_wer_on_text_channel",
+    "comet",
+    "valid_audio_token_rate",
+    "mean_audio_tokens",
+    "prediction_count",
+]
+BEST_COLUMNS = TEXT_COLUMNS + [
+    "blaser_2_0_ref",
+    "blaser_2_0_qe",
+    "speechbertscore_f1",
+    "mcd",
+    "notes",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Build thesis-ready CSV/LaTeX tables from rank-ablation text summaries "
+            "and optional advanced speech/BLASER metric outputs."
+        )
+    )
+    parser.add_argument("--summary", required=True, help="summary.json from eval_rank_ablation.py.")
+    parser.add_argument("--speech-metrics", default=None, help="speech_metrics.json from run_best_audio_eval.py.")
+    parser.add_argument("--blaser-metrics", default=None, help="blaser_metrics.json from run_best_audio_eval.py.")
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory. Defaults to <summary_dir>/thesis_tables.",
+    )
+    parser.add_argument("--plot", action="store_true", help="Write simple thesis helper plots.")
+    parser.add_argument(
+        "--plot-metric",
+        default="comet",
+        help="Metric for parameter-efficiency plot. Defaults to COMET.",
+    )
+    return parser.parse_args()
+
+
+def read_json(path: Path) -> Any:
+    if not path.exists():
+        raise FileNotFoundError(f"Missing file: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def normalize_metric_key(key: str) -> str:
+    aliases = {
+        "speechbertscore_f1": "speechbertscore_f1",
+        "mcd": "mcd",
+        "blaser_2_0_ref": "blaser_2_0_ref",
+        "blaser_2_0_qe": "blaser_2_0_qe",
+    }
+    return aliases.get(key, key)
+
+
+def load_metric_map(path: str | None) -> dict[str, dict[str, Any]]:
+    if not path:
+        return {}
+    data = read_json(Path(path).expanduser())
+    if not isinstance(data, dict):
+        raise ValueError(f"Metric file must contain an object: {path}")
+    metric_map: dict[str, dict[str, Any]] = {}
+    for system, metrics in data.items():
+        if isinstance(metrics, dict):
+            metric_map[str(system)] = {
+                normalize_metric_key(str(key)): value for key, value in metrics.items()
+            }
+    return metric_map
+
+
+def merge_advanced_metrics(
+    rows: list[dict[str, Any]],
+    speech_metrics: dict[str, dict[str, Any]],
+    blaser_metrics: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = []
+    for row in rows:
+        item = dict(row)
+        system = str(row.get("system", ""))
+        item.update(blaser_metrics.get(system, {}))
+        item.update(speech_metrics.get(system, {}))
+        merged.append(item)
+    return merged
+
+
+def write_csv(path: Path, rows: list[dict[str, Any]], columns: list[str] | None = None) -> None:
+    if columns is None:
+        columns = sorted({key for row in rows for key in row.keys()})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"Wrote {path}")
+
+
+def format_cell(value: Any, digits: int = 3) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        return f"{value:.{digits}f}"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return f"{number:.{digits}f}"
+
+
+def latex_escape(value: str) -> str:
+    replacements = {
+        "\\": "\\textbackslash{}",
+        "&": "\\&",
+        "%": "\\%",
+        "$": "\\$",
+        "#": "\\#",
+        "_": "\\_",
+        "{": "\\{",
+        "}": "\\}",
+        "~": "\\textasciitilde{}",
+        "^": "\\textasciicircum{}",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+    return value
+
+
+def write_latex_table(path: Path, rows: list[dict[str, Any]]) -> None:
+    headers = [
+        ("system", "System"),
+        ("rank", "LoRA r"),
+        ("trainable_percent", "Trainable \\%"),
+        ("checkpoint", "Best checkpoint"),
+        ("bleu", "BLEU"),
+        ("chrf", "chrF"),
+        ("wer_on_text_channel", "WER"),
+        ("comet", "COMET"),
+        ("blaser_2_0_ref", "BLASER-ref"),
+        ("speechbertscore_f1", "SpeechBERT F1"),
+        ("mcd", "MCD"),
+    ]
+    lines = [
+        "% Generated by scripts/build_thesis_ablation_tables.py.",
+        "% Caption suggestion: Rank-ablation results on the same validation subset. "
+        "Speech metrics are reported only for systems with synthesized audio.",
+        "\\begin{tabular}{lrrrrrrrrrr}",
+        "\\toprule",
+        " & ".join(label for _, label in headers) + " \\\\",
+        "\\midrule",
+    ]
+    for row in rows:
+        cells = []
+        for key, _ in headers:
+            cell = format_cell(row.get(key))
+            cells.append(latex_escape(cell))
+        lines.append(" & ".join(cells) + " \\\\")
+    lines.extend(["\\bottomrule", "\\end{tabular}", ""])
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {path}")
+
+
+def best_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if row.get("kind") == "adapter" and bool(row.get("is_best_for_rank"))
+    ]
+
+
+def parameter_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, Any]] = set()
+    output = []
+    for row in rows:
+        key = (row.get("system"), row.get("rank"))
+        if key in seen or row.get("kind") != "adapter":
+            continue
+        seen.add(key)
+        output.append(
+            {
+                "system": row.get("system"),
+                "rank": row.get("rank"),
+                "trainable_params": row.get("trainable_params"),
+                "trainable_percent": row.get("trainable_percent"),
+                "notes": row.get("notes", ""),
+            }
+        )
+    return output
+
+
+def make_plots(rows: list[dict[str, Any]], output_dir: Path, metric: str) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise RuntimeError("Install matplotlib to use --plot.") from exc
+
+    plot_rows = [
+        row
+        for row in rows
+        if isinstance(row.get("trainable_percent"), (int, float))
+        and isinstance(row.get(metric), (int, float))
+    ]
+    if plot_rows:
+        plt.figure(figsize=(7, 4.5))
+        xs = [float(row["trainable_percent"]) for row in plot_rows]
+        ys = [float(row[metric]) for row in plot_rows]
+        labels = [str(row.get("system", "")) for row in plot_rows]
+        plt.scatter(xs, ys)
+        for x, y, label in zip(xs, ys, labels):
+            plt.annotate(label, (x, y), textcoords="offset points", xytext=(5, 5))
+        plt.xlabel("trainable parameters (%)")
+        plt.ylabel(metric)
+        plt.title(f"{metric} vs trainable parameter percentage")
+        plt.tight_layout()
+        out = output_dir / f"{metric}_vs_trainable_percent.png"
+        plt.savefig(out, dpi=160)
+        plt.close()
+        print(f"Wrote {out}")
+
+    checkpoint_rows = [
+        row
+        for row in rows
+        if isinstance(row.get(metric), (int, float))
+        and str(row.get("checkpoint", "")).startswith("checkpoint-")
+    ]
+    if checkpoint_rows:
+        plt.figure(figsize=(8, 5))
+        by_system: dict[str, list[dict[str, Any]]] = {}
+        for row in checkpoint_rows:
+            by_system.setdefault(str(row.get("system")), []).append(row)
+        for system, system_rows in by_system.items():
+            points = []
+            for row in system_rows:
+                try:
+                    step = int(str(row.get("checkpoint")).split("-")[-1])
+                except ValueError:
+                    continue
+                points.append((step, float(row[metric])))
+            if points:
+                points.sort()
+                plt.plot([x for x, _ in points], [y for _, y in points], marker="o", label=system)
+        plt.xlabel("checkpoint step")
+        plt.ylabel(metric)
+        plt.title(f"{metric} over saved checkpoints")
+        plt.legend()
+        plt.tight_layout()
+        out = output_dir / f"{metric}_by_checkpoint.png"
+        plt.savefig(out, dpi=160)
+        plt.close()
+        print(f"Wrote {out}")
+
+
+def main() -> None:
+    args = parse_args()
+    summary_path = Path(args.summary).expanduser()
+    summary = read_json(summary_path)
+    if not isinstance(summary, dict) or "rows" not in summary:
+        raise ValueError(f"Expected summary object with rows: {summary_path}")
+
+    output_dir = Path(args.output_dir).expanduser() if args.output_dir else summary_path.parent / "thesis_tables"
+    if not output_dir.is_absolute():
+        output_dir = ROOT / output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = list(summary["rows"])
+    speech_metrics = load_metric_map(args.speech_metrics)
+    blaser_metrics = load_metric_map(args.blaser_metrics)
+    merged_best = merge_advanced_metrics(best_rows(rows), speech_metrics, blaser_metrics)
+
+    write_csv(output_dir / "all_checkpoint_text_metrics.csv", rows, TEXT_COLUMNS)
+    write_csv(output_dir / "best_checkpoint_metrics.csv", merged_best, BEST_COLUMNS)
+    write_csv(output_dir / "parameter_efficiency.csv", parameter_rows(rows))
+    write_latex_table(output_dir / "best_checkpoint_metrics.tex", merged_best)
+
+    metadata = {
+        "summary": str(summary_path),
+        "speech_metrics": args.speech_metrics,
+        "blaser_metrics": args.blaser_metrics,
+        "plot_metric": args.plot_metric,
+        "notes": (
+            "Tables are generated from retrospective evaluations on the same configured "
+            "validation subset. Do not compare speech metrics for systems without valid audio."
+        ),
+    }
+    (output_dir / "table_metadata.json").write_text(
+        json.dumps(metadata, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    if args.plot:
+        make_plots(rows, output_dir, args.plot_metric)
+
+
+if __name__ == "__main__":
+    main()
