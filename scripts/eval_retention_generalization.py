@@ -493,6 +493,7 @@ def run_condition(
                     "source_text": row.get("source_text", ""),
                     "reference": row.get("reference", ""),
                     "prediction": prediction,
+                    "audio_tokens": generated["audio_tokens"],
                     "target_script_hit": language_script_hit(prediction, args.target_language),
                     "audio_token_count": generated["audio_token_count"],
                     "generated_token_count": generated["generated_token_count"],
