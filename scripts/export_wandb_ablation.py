@@ -156,8 +156,9 @@ def first_float(row: dict[str, str], keys: tuple[str, ...]) -> float | None:
 def plot_histories(csv_paths: list[Path], output_dir: Path) -> None:
     try:
         import matplotlib.pyplot as plt
-    except ImportError as exc:
-        raise RuntimeError("Install matplotlib to use --plot.") from exc
+    except ImportError:
+        print("[WARN] matplotlib is not installed; skipping optional W&B plots.")
+        return
 
     specs = [
         ("loss_vs_step.png", "Loss", ("train/loss", "loss")),

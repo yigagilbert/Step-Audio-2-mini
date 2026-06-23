@@ -215,8 +215,9 @@ def parameter_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def make_plots(rows: list[dict[str, Any]], output_dir: Path, metric: str) -> None:
     try:
         import matplotlib.pyplot as plt
-    except ImportError as exc:
-        raise RuntimeError("Install matplotlib to use --plot.") from exc
+    except ImportError:
+        print("[WARN] matplotlib is not installed; skipping optional plots.")
+        return
 
     plot_rows = [
         row
