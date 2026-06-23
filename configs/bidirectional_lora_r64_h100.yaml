@@ -42,7 +42,7 @@ dataset:
     top_db: 35
   audio:
     sample_rate: 16000
-    save_resampled_wavs: true
+    save_resampled_wavs: false
   preprocessing:
     max_samples_per_split:
       train:
