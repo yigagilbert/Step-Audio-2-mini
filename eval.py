@@ -69,7 +69,10 @@ def extract_outputs(
 @torch.no_grad()
 def generate_one(model, tokenizer, formatter, row, cfg, device: torch.device) -> dict[str, Any]:
     mel = torch.load(row["src_mel_path"], map_location="cpu")
-    prompt_ids = formatter.build_prompt(int(mel.shape[1]))
+    prompt_ids = formatter.build_prompt(
+        int(mel.shape[1]),
+        system_prompt=row.get("system_prompt"),
+    )
     input_ids = torch.tensor([prompt_ids], dtype=torch.long, device=device)
     attention_mask = torch.ones_like(input_ids)
     wavs = mel.unsqueeze(0).to(device=device, dtype=torch.float32)
@@ -93,7 +96,11 @@ def generate_one(model, tokenizer, formatter, row, cfg, device: torch.device) ->
     pred_text = clean_prediction_text(tokenizer.decode(text_ids, skip_special_tokens=True))
     return {
         "id": row["id"],
-        "reference": row["text_eng"],
+        "direction": row.get("direction"),
+        "source_language": row.get("source_language"),
+        "target_language": row.get("target_language"),
+        "source": row.get("source_text") or row.get("text_lug", ""),
+        "reference": row.get("target_text") or row["text_eng"],
         "prediction": pred_text,
         "audio_tokens": audio_tokens,
     }
@@ -150,6 +157,11 @@ def main() -> None:
         help="Evaluate the base model without loading a LoRA adapter.",
     )
     parser.add_argument("--split", default="validation")
+    parser.add_argument(
+        "--direction",
+        default=None,
+        help="Optional prepared-row direction filter, e.g. lug_to_eng or eng_to_lug.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--comet-model", default=None)
     parser.add_argument("--output-jsonl", default=None)
@@ -159,6 +171,12 @@ def main() -> None:
     cfg = load_config(args.config)
     processed_dir = Path(cfg["project"]["processed_dir"])
     rows = read_jsonl(processed_dir / f"{args.split}.jsonl")
+    if args.direction:
+        rows = [row for row in rows if row.get("direction") == args.direction]
+        if not rows:
+            raise ValueError(
+                f"No rows found for direction={args.direction!r} in {processed_dir / f'{args.split}.jsonl'}"
+            )
     if args.limit:
         rows = rows[: args.limit]
 
@@ -193,12 +211,14 @@ def main() -> None:
 
     preds = [o["prediction"] for o in outputs]
     refs = [o["reference"] for o in outputs]
-    srcs = [row.get("text_lug", "") for row in rows]
+    srcs = [o.get("source", "") for o in outputs]
     metrics = {
         "bleu": sacrebleu.corpus_bleu(preds, [refs]).score if preds else 0.0,
         "chrf": sacrebleu.corpus_chrf(preds, [refs]).score if preds else 0.0,
         "wer_on_text_channel": wer(refs, preds) if preds else 1.0,
         "count": len(outputs),
+        "split": args.split,
+        "direction": args.direction,
         "base_model": model_path,
         "adapter": adapter_path,
         "adapter_loaded": adapter_loaded,

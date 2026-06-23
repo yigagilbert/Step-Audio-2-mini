@@ -66,9 +66,10 @@ class StepAudioFormatter:
         patch_count = compute_token_num(mel_frames)
         return [self.audio_start_id] + [self.audio_patch_id] * patch_count + [self.audio_end_id]
 
-    def build_prompt(self, mel_frames: int) -> list[int]:
+    def build_prompt(self, mel_frames: int, system_prompt: str | None = None) -> list[int]:
+        prompt_text = system_prompt or self.system_prompt
         ids: list[int] = []
-        ids += self.encode_text(f"{BOT}system\n{self.system_prompt}{EOT}")
+        ids += self.encode_text(f"{BOT}system\n{prompt_text}{EOT}")
         ids += self.encode_text(f"{BOT}human\n")
         ids += self.audio_placeholder_ids(mel_frames)
         ids += [self.eot_id]
@@ -104,8 +105,9 @@ class StepAudioFormatter:
         mel_frames: int,
         text_eng: str,
         audio_tokens: list[int],
+        system_prompt: str | None = None,
     ) -> FormattedSample:
-        prompt = self.build_prompt(mel_frames)
+        prompt = self.build_prompt(mel_frames, system_prompt=system_prompt)
         target = self.build_target(text_eng=text_eng, audio_tokens=audio_tokens)
         return FormattedSample(
             input_ids=prompt + target,

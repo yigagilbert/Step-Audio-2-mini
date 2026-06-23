@@ -61,8 +61,9 @@ class StepAudioCollator:
                 raise ValueError(f"Expected 2D mel tensor, got {tuple(mel.shape)} for {row['id']}")
             sample = self.formatter.format_sft(
                 mel_frames=int(mel.shape[1]),
-                text_eng=row.get("text_eng", ""),
+                text_eng=row.get("target_text") or row.get("text_eng", ""),
                 audio_tokens=row.get("target_audio_tokens", []),
+                system_prompt=row.get("system_prompt"),
             )
             if len(sample.input_ids) > self.max_sequence_length:
                 sample.input_ids = sample.input_ids[: self.max_sequence_length]

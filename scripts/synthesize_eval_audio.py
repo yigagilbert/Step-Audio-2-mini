@@ -163,16 +163,23 @@ def main() -> None:
         name = f"{idx:04d}_{safe_name(str(row.get('id', idx)))}.wav"
         wav_path = sample_dir / name
         wav_path.write_bytes(token2wav(audio_tokens, prompt_wav=str(prompt_wav)))
+        prepared_row = prepared_rows.get(str(row.get("id")), {})
+        ref_audio = prepared_row.get("target_wav_path") or str(
+            processed_dir / args.split / "wav" / f"{row.get('id')}.eng.wav"
+        )
+        source_audio = prepared_row.get("source_wav_path")
         manifest.append(
             {
                 "id": row.get("id"),
                 "hyp_audio": str(wav_path),
                 "wav": str(wav_path),
-                "ref_audio": str(
-                    processed_dir / args.split / "wav" / f"{row.get('id')}.eng.wav"
-                ),
-                "source": prepared_rows.get(str(row.get("id")), {}).get("text_lug", ""),
-                "reference": row.get("reference"),
+                "ref_audio": str(ref_audio),
+                "source_audio": source_audio,
+                "direction": row.get("direction") or prepared_row.get("direction"),
+                "source_language": row.get("source_language") or prepared_row.get("source_language"),
+                "target_language": row.get("target_language") or prepared_row.get("target_language"),
+                "source": prepared_row.get("source_text") or prepared_row.get("text_lug", ""),
+                "reference": row.get("reference") or prepared_row.get("target_text"),
                 "prediction": row.get("prediction"),
                 "audio_tokens": len(audio_tokens),
             }
