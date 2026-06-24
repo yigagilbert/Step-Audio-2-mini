@@ -1,7 +1,7 @@
 project:
   name: stepaudio2-luganda-english-bidirectional-lora-r64
-  output_dir: outputs/bidirectional/lora-r64
-  processed_dir: data/processed/luganda_english_bidirectional_v1
+  output_dir: /mnt/stepaudio_outputs/bidirectional/lora-r64
+  processed_dir: /mnt/stepaudio_processed/luganda_english_bidirectional_v1
   seed: 42
 
 model:
