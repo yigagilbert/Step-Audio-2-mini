@@ -66,9 +66,19 @@ def resolve_device(device_arg: str | None) -> tuple[torch.device, int]:
 
 
 def source_wav_path(row: dict[str, Any], processed_dir: Path, split: str) -> Path:
+    if row.get("source_wav_path"):
+        return Path(row["source_wav_path"])
     if row.get("src_wav_path"):
         return Path(row["src_wav_path"])
     return processed_dir / split / "wav" / f"{row['id']}.lug.wav"
+
+
+def row_source_text(row: dict[str, Any]) -> str:
+    return str(row.get("source_text") or row.get("text_lug") or "")
+
+
+def row_reference_text(row: dict[str, Any]) -> str:
+    return str(row.get("target_text") or row.get("text_eng") or "")
 
 
 def require_source_wavs(rows: list[dict[str, Any]], processed_dir: Path, split: str) -> None:
@@ -264,6 +274,11 @@ def main() -> None:
     )
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--split", default="validation")
+    parser.add_argument(
+        "--direction",
+        default=None,
+        help="Optional prepared-row direction filter, e.g. lug_to_eng or eng_to_lug.",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--asr-model", default="Sunbird/asr-whisper-large-v3-salt")
     parser.add_argument("--mt-model", default="Sunbird/translate-nllb-3.3b-salt")
@@ -289,6 +304,12 @@ def main() -> None:
     cfg = load_config(args.config)
     processed_dir = Path(cfg["project"]["processed_dir"])
     rows = read_jsonl(processed_dir / f"{args.split}.jsonl")
+    if args.direction:
+        rows = [row for row in rows if row.get("direction") == args.direction]
+        if not rows:
+            raise ValueError(
+                f"No rows found for direction={args.direction!r} in {processed_dir / f'{args.split}.jsonl'}"
+            )
     if args.limit:
         rows = rows[: args.limit]
     require_source_wavs(rows, processed_dir, args.split)
@@ -347,10 +368,13 @@ def main() -> None:
             outputs.append(
                 {
                     "id": row["id"],
+                    "direction": row.get("direction"),
+                    "source_language": row.get("source_language"),
+                    "target_language": row.get("target_language"),
                     "source_wav": str(wav_path),
-                    "source": row.get("text_lug", ""),
+                    "source": row_source_text(row),
                     "asr_text": asr_text,
-                    "reference": row["text_eng"],
+                    "reference": row_reference_text(row),
                     "prediction": prediction,
                 }
             )
@@ -361,6 +385,8 @@ def main() -> None:
     metrics = compute_metrics(predictions, references, sources, args.comet_model)
     metrics.update(
         {
+            "split": args.split,
+            "direction": args.direction,
             "asr_model": args.asr_model,
             "mt_model": args.mt_model,
             "src_lang": src_lang,
