@@ -114,11 +114,124 @@ Adapter code and metadata are Apache-2.0. Check the dataset license separately b
 redistribution.
 """
 
+BIDIRECTIONAL_MODEL_CARD_TEMPLATE = """---
+license: apache-2.0
+base_model: stepfun-ai/Step-Audio-2-mini
+library_name: peft
+tags:
+- audio
+- speech-translation
+- speech-to-speech
+- luganda
+- english
+- bidirectional
+- stepaudio2
+model-index:
+- name: Step-Audio 2 Mini Luganda-English Bidirectional S2ST LoRA
+  results:
+  - task:
+      type: speech-translation
+      name: English-to-Luganda speech translation
+    dataset:
+      type: yigagilbert/luganda-english-cleaned-v1-split
+      name: Luganda-English Cleaned v1 Split
+      split: validation
+    metrics:
+    - type: bleu
+      name: BLEU
+      value: 11.155
+    - type: chrf
+      name: chrF
+      value: 45.331
+    - type: wer
+      name: WER on generated Luganda text
+      value: 0.811
+  - task:
+      type: speech-translation
+      name: Luganda-to-English speech translation
+    dataset:
+      type: yigagilbert/luganda-english-cleaned-v1-split
+      name: Luganda-English Cleaned v1 Split
+      split: validation
+    metrics:
+    - type: bleu
+      name: BLEU
+      value: 19.032
+    - type: chrf
+      name: chrF
+      value: 42.447
+    - type: wer
+      name: WER on generated English text
+      value: 0.737
+---
 
-def write_model_card(folder: Path, repo_id: str, overwrite: bool) -> Path:
+# Step-Audio 2 Mini Luganda-English Bidirectional S2ST LoRA
+
+This repository contains a LoRA adapter for `stepfun-ai/Step-Audio-2-mini` trained
+with direction prompts for both Luganda-to-English and English-to-Luganda
+speech-to-speech translation.
+
+Adapter repository: `{repo_id}`
+
+## Intended Use
+
+Research and development for bidirectional Luganda-English speech translation. Validate
+with native speakers before production use.
+
+## Training Data
+
+The adapter was trained from `yigagilbert/luganda-english-cleaned-v1-split` by expanding
+each aligned pair into two supervised examples:
+
+- Luganda speech input -> English text and English speech tokens
+- English speech input -> Luganda text and Luganda speech tokens
+
+Each example uses a direction-specific system prompt so that one adapter can learn both
+translation directions.
+
+## Evaluation
+
+The checkpoint uploaded here was evaluated on 200 held-out validation examples per
+direction.
+
+| Direction | Count | BLEU higher | chrF higher | WER lower |
+|---|---:|---:|---:|---:|
+| English -> Luganda | 200 | 11.155 | 45.331 | 0.811 |
+| Luganda -> English | 200 | 19.032 | 42.447 | 0.737 |
+
+Compared with the earlier Luganda-to-English-only LoRA adapter, this bidirectional
+adapter adds English-to-Luganda capability, but Luganda-to-English quality is lower than
+the specialized one-direction adapter. This is expected: one adapter is sharing capacity
+across both translation directions.
+
+## Loading
+
+Load this as a PEFT adapter on top of `stepfun-ai/Step-Audio-2-mini`.
+
+## Limitations
+
+- Automatic metrics for Luganda can understate useful translations because of spelling
+  and morphology variation.
+- Speech quality should be checked by listening to synthesized samples.
+- This adapter is a research artifact and should not be used for high-stakes translation
+  without human validation.
+
+## License
+
+Adapter code and metadata are Apache-2.0. Check the dataset and base model licenses
+separately before redistribution.
+"""
+
+
+def write_model_card(folder: Path, repo_id: str, overwrite: bool, card_type: str) -> Path:
     readme = folder / "README.md"
     if not readme.exists() or overwrite:
-        readme.write_text(MODEL_CARD_TEMPLATE.format(repo_id=repo_id), encoding="utf-8")
+        template = (
+            BIDIRECTIONAL_MODEL_CARD_TEMPLATE
+            if card_type == "bidirectional"
+            else MODEL_CARD_TEMPLATE
+        )
+        readme.write_text(template.format(repo_id=repo_id), encoding="utf-8")
     return readme
 
 
@@ -127,6 +240,12 @@ def main() -> None:
     parser.add_argument("--folder", default="outputs/stepaudio2-luganda-lora/final")
     parser.add_argument("--repo-id", required=True)
     parser.add_argument("--private", action="store_true")
+    parser.add_argument(
+        "--card-type",
+        choices=("lug_to_eng", "bidirectional"),
+        default="lug_to_eng",
+        help="Model card template to write before upload.",
+    )
     parser.add_argument(
         "--overwrite-readme",
         action="store_true",
@@ -145,7 +264,12 @@ def main() -> None:
         folder.mkdir(parents=True, exist_ok=True)
     elif not folder.exists():
         raise FileNotFoundError(folder)
-    readme = write_model_card(folder, repo_id=args.repo_id, overwrite=args.overwrite_readme)
+    readme = write_model_card(
+        folder,
+        repo_id=args.repo_id,
+        overwrite=args.overwrite_readme,
+        card_type=args.card_type,
+    )
 
     api = HfApi()
     api.create_repo(args.repo_id, repo_type="model", private=args.private, exist_ok=True)
