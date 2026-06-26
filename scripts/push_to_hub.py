@@ -192,17 +192,45 @@ translation directions.
 ## Evaluation
 
 The checkpoint uploaded here was evaluated on 200 held-out validation examples per
-direction.
+direction. Text metrics are computed on the generated text channel; audio samples are
+synthesized from generated Step-Audio tokens with the upstream Token2wav decoder.
 
-| Direction | Count | BLEU higher | chrF higher | WER lower |
-|---|---:|---:|---:|---:|
-| English -> Luganda | 200 | 11.155 | 45.331 | 0.811 |
-| Luganda -> English | 200 | 19.032 | 42.447 | 0.737 |
+### Text Metrics
+
+| Direction | System | Count | BLEU higher | chrF higher | WER lower | COMET higher |
+|---|---|---:|---:|---:|---:|---:|
+| Luganda -> English | Focused one-direction LoRA | 200 | 32.530 | 54.535 | 0.574 | 0.717 |
+| Luganda -> English | This bidirectional LoRA | 200 | 19.032 | 42.447 | 0.737 | 0.640 |
+| English -> Luganda | Focused one-direction LoRA control | 200 | 0.120 | 14.050 | 1.300 | - |
+| English -> Luganda | This bidirectional LoRA | 200 | 11.155 | 45.331 | 0.811 | 0.678 |
+| English -> Luganda | ASR + MT cascade baseline | 200 | 4.026 | 34.734 | 2.039 | 0.624 |
+
+### Speech Metrics
+
+Speech metrics were computed on 20 audio-aligned samples per direction using WavLM-large
+SpeechBERTScore-style similarity and MFCC+DTW MCD. These should be treated as
+supporting audio-channel diagnostics, not as standalone translation-quality measures.
+
+| Direction | Count | SpeechBERT P higher | SpeechBERT R higher | SpeechBERT F1 higher | MCD lower |
+|---|---:|---:|---:|---:|---:|
+| Luganda -> English | 20 | 0.560 | 0.582 | 0.570 | 639.360 |
+| English -> Luganda | 20 | 0.502 | 0.572 | 0.523 | 614.130 |
+
+### Retention and Composition Probes
+
+The bidirectional adapter does not recover the base model's unrelated multilingual speech
+translation ability on small FLEURS probes: Spanish -> English BLEU is 0.293 and
+Japanese -> English BLEU is 0.163 on 20 samples each. However, it does recover
+target-script compliance on Luganda -> Chinese and Luganda -> Japanese prompt probes
+(100% target-script hit rate in both cases). The semantic quality of those composition
+outputs is poor, with roundtrip BLEU below 1, so these probes should not be read as
+successful Luganda -> Chinese/Japanese translation.
 
 Compared with the earlier Luganda-to-English-only LoRA adapter, this bidirectional
 adapter adds English-to-Luganda capability, but Luganda-to-English quality is lower than
-the specialized one-direction adapter. This is expected: one adapter is sharing capacity
-across both translation directions.
+the specialized one-direction adapter. The bidirectional run was also shorter (9,000 steps)
+than the focused adapter run, so the gap combines multi-task interference and training
+duration.
 
 ## Loading
 

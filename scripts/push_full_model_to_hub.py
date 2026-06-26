@@ -8,12 +8,9 @@ from typing import Any
 
 import yaml
 from huggingface_hub import HfApi, snapshot_download
-from peft import PeftModel
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-
-from stepaudio_luganda.modeling import load_model, load_tokenizer  # noqa: E402
 
 
 FULL_MODEL_CARD_TEMPLATE = """---
@@ -135,6 +132,157 @@ contains base-model weights, users must also comply with the base model license 
 dataset licensing constraints.
 """
 
+BIDIRECTIONAL_FULL_MODEL_CARD_TEMPLATE = """---
+license: apache-2.0
+base_model: {base_model}
+library_name: transformers
+tags:
+- audio
+- speech-translation
+- speech-to-speech
+- luganda
+- english
+- bidirectional
+- stepaudio2
+- merged-lora
+model-index:
+- name: Step-Audio 2 Mini Luganda-English Bidirectional S2ST
+  results:
+  - task:
+      type: speech-translation
+      name: English-to-Luganda speech translation
+    dataset:
+      type: yigagilbert/luganda-english-cleaned-v1-split
+      name: Luganda-English Cleaned v1 Split
+      split: validation
+    metrics:
+    - type: bleu
+      name: BLEU
+      value: 11.155
+    - type: chrf
+      name: chrF
+      value: 45.331
+    - type: wer
+      name: WER on generated Luganda text
+      value: 0.811
+    - type: comet
+      name: COMET
+      value: 0.678
+  - task:
+      type: speech-translation
+      name: Luganda-to-English speech translation
+    dataset:
+      type: yigagilbert/luganda-english-cleaned-v1-split
+      name: Luganda-English Cleaned v1 Split
+      split: validation
+    metrics:
+    - type: bleu
+      name: BLEU
+      value: 19.032
+    - type: chrf
+      name: chrF
+      value: 42.447
+    - type: wer
+      name: WER on generated English text
+      value: 0.737
+    - type: comet
+      name: COMET
+      value: 0.640
+---
+
+# Step-Audio 2 Mini Luganda-English Bidirectional S2ST
+
+This repository contains a full merged model for bidirectional Luganda-English
+speech-to-speech translation. It was created by merging the LoRA adapter `{adapter}` into
+`{base_model}`.
+
+The separate adapter-only repository should remain available for users who prefer PEFT
+loading or want the smaller adapter artifact. This full repository is intended for simpler
+deployment and inference where loading a single model repo is preferable.
+
+## Intended Use
+
+Research and development for Luganda-English speech translation in both directions:
+
+- Luganda speech input -> English text and English speech tokens
+- English speech input -> Luganda text and Luganda speech tokens
+
+Validate outputs with native speakers before production or high-stakes use.
+
+## Source Model and Adapter
+
+- Base model: `{base_model}`
+- LoRA adapter: `{adapter}`
+- Merge script: `scripts/push_full_model_to_hub.py`
+
+## Training Data
+
+The model was trained from `yigagilbert/luganda-english-cleaned-v1-split` by expanding
+each aligned speech pair into two direction-conditioned supervised examples. Each example
+uses a direction-specific system prompt so that one adapter can learn both translation
+directions.
+
+## Evaluation Summary
+
+The checkpoint used for this merge was evaluated on 200 held-out validation examples per
+direction. The metrics below were generated with the adapter-loaded fine-tuned model
+before merge; the merged model contains the same adapted weights and is expected to match
+these results aside from normal deterministic or runtime differences. Re-run evaluation
+directly on this repository before a strict release if exact reproducibility is required.
+
+### Text Metrics
+
+| Direction | System | Count | BLEU higher | chrF higher | WER lower | COMET higher |
+|---|---|---:|---:|---:|---:|---:|
+| Luganda -> English | Focused one-direction LoRA | 200 | 32.530 | 54.535 | 0.574 | 0.717 |
+| Luganda -> English | This bidirectional model | 200 | 19.032 | 42.447 | 0.737 | 0.640 |
+| English -> Luganda | Focused one-direction LoRA control | 200 | 0.120 | 14.050 | 1.300 | - |
+| English -> Luganda | This bidirectional model | 200 | 11.155 | 45.331 | 0.811 | 0.678 |
+| English -> Luganda | ASR + MT cascade baseline | 200 | 4.026 | 34.734 | 2.039 | 0.624 |
+
+### Speech Metrics
+
+Speech metrics were computed on 20 audio-aligned samples per direction using WavLM-large
+SpeechBERTScore-style similarity and MFCC+DTW MCD. These are supporting audio-channel
+diagnostics, not standalone translation-quality measures.
+
+| Direction | Count | SpeechBERT P higher | SpeechBERT R higher | SpeechBERT F1 higher | MCD lower |
+|---|---:|---:|---:|---:|---:|
+| Luganda -> English | 20 | 0.560 | 0.582 | 0.570 | 639.360 |
+| English -> Luganda | 20 | 0.502 | 0.572 | 0.523 | 614.130 |
+
+### Retention and Composition Probes
+
+The bidirectional model does not recover unrelated multilingual speech translation ability
+on small FLEURS probes: Spanish -> English BLEU is 0.293 and Japanese -> English BLEU
+is 0.163 on 20 samples each. However, it does recover target-script compliance on
+Luganda -> Chinese and Luganda -> Japanese prompt probes (100% target-script hit rate
+in both cases). The semantic quality of those composition outputs is poor, with roundtrip
+BLEU below 1, so these probes should not be read as successful Luganda -> Chinese or
+Luganda -> Japanese translation.
+
+## Interpretation
+
+This model demonstrates that one direction-conditioned LoRA adaptation of Step-Audio-2-mini
+can learn both Luganda -> English and English -> Luganda speech translation. Compared
+with the earlier Luganda-to-English-only adapter, it adds English-to-Luganda capability but
+is weaker on Luganda-to-English. The bidirectional run was shorter (9,000 steps) than the
+focused one-direction run, so the Luganda-to-English gap combines multi-task interference
+and training duration.
+
+## Notes
+
+If this repository includes `token2wav/`, those assets are provided to support waveform
+synthesis from generated audio tokens. Some inference clients may still use the official
+Step-Audio2 runtime code for token-to-waveform conversion.
+
+## License
+
+The training code and adapter metadata are Apache-2.0. Because this merged repository
+contains base-model weights, users must also comply with the base model license and any
+dataset licensing constraints.
+"""
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -154,6 +302,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default="outputs/merged-stepaudio2-luganda")
     parser.add_argument("--repo-id", required=True, help="Destination HF model repo ID.")
     parser.add_argument("--private", action="store_true")
+    parser.add_argument(
+        "--card-type",
+        choices=("lug_to_eng", "bidirectional"),
+        default="lug_to_eng",
+        help="Model card template to write before upload.",
+    )
     parser.add_argument(
         "--skip-merge",
         action="store_true",
@@ -209,14 +363,22 @@ def resolve_adapter_ref(cfg: dict[str, Any], override: str | None) -> str:
     return str(Path(cfg["project"]["output_dir"]) / "final")
 
 
-def write_model_card(output: Path, base_model: str, adapter: str, overwrite: bool) -> None:
+def write_model_card(
+    output: Path,
+    base_model: str,
+    adapter: str,
+    overwrite: bool,
+    card_type: str,
+) -> None:
     readme = output / "README.md"
     if readme.exists() and not overwrite:
         return
-    readme.write_text(
-        FULL_MODEL_CARD_TEMPLATE.format(base_model=base_model, adapter=adapter),
-        encoding="utf-8",
+    template = (
+        BIDIRECTIONAL_FULL_MODEL_CARD_TEMPLATE
+        if card_type == "bidirectional"
+        else FULL_MODEL_CARD_TEMPLATE
     )
+    readme.write_text(template.format(base_model=base_model, adapter=adapter), encoding="utf-8")
 
 
 def copy_if_exists(src_root: Path, output: Path, relative_path: str) -> None:
@@ -249,6 +411,9 @@ def copy_token2wav_assets(base_model: str, output: Path) -> None:
 
 
 def merge_model(cfg: dict[str, Any], base_model: str, adapter: str, output: Path) -> None:
+    from peft import PeftModel
+    from stepaudio_luganda.modeling import load_model, load_tokenizer
+
     model_cfg = dict(cfg["model"])
     model_cfg["gradient_checkpointing"] = False
     model = load_model(base_model, model_cfg)
@@ -308,7 +473,13 @@ def main() -> None:
         print("Copying token2wav assets into the full model folder")
         copy_token2wav_assets(base_model, output)
 
-    write_model_card(output, base_model=base_model, adapter=adapter, overwrite=args.overwrite_readme)
+    write_model_card(
+        output,
+        base_model=base_model,
+        adapter=adapter,
+        overwrite=args.overwrite_readme,
+        card_type=args.card_type,
+    )
     readme = output / "README.md"
 
     if args.readme_only:
